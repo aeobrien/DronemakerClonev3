@@ -53,6 +53,22 @@ MainComponent::MainComponent()
     };
     addAndMakeVisible (testButton);
 
+    // Buffer size selector
+    // Note: Sizes above 2048 can cause issues with FFT overlap-add (hopSize is 8192)
+    bufferSizeCombo.addItem ("256", 256);
+    bufferSizeCombo.addItem ("512", 512);
+    bufferSizeCombo.addItem ("1024", 1024);
+    bufferSizeCombo.addItem ("2048", 2048);
+    bufferSizeCombo.setSelectedId (2048);
+    bufferSizeCombo.onChange = [this] {
+        int bufSize = bufferSizeCombo.getSelectedId();
+        juce::AudioDeviceManager::AudioDeviceSetup setup;
+        deviceManager.getAudioDeviceSetup (setup);
+        setup.bufferSize = bufSize;
+        deviceManager.setAudioDeviceSetup (setup, true);
+    };
+    addAndMakeVisible (bufferSizeCombo);
+
     // ===== DRONE SECTION =====
     setupKnob (dryWetKnob, dryWetLabel, "Dry/Wet", 0.0, 1.0, 0.01, 0.2);
     dryWetKnob.onValueChange = [this] {
@@ -208,6 +224,8 @@ MainComponent::MainComponent()
     scaleTypeCombo.addItem ("Mixolydian", 7);
     scaleTypeCombo.addItem ("Aeolian (Minor)", 8);
     scaleTypeCombo.addItem ("Locrian", 9);
+    scaleTypeCombo.addItem ("Pentatonic Maj", 10);
+    scaleTypeCombo.addItem ("Pentatonic Min", 11);
     scaleTypeCombo.setSelectedId (1);
     scaleTypeCombo.onChange = [this] {
         int v = scaleTypeCombo.getSelectedId() - 1;
@@ -354,6 +372,8 @@ void MainComponent::resized()
     auto header = bounds.removeFromTop (45);
     header.removeFromLeft (200); // Space for meters
     testButton.setBounds (header.removeFromLeft (50));
+    header.removeFromLeft (5);
+    bufferSizeCombo.setBounds (header.removeFromLeft (80));
     header.removeFromLeft (5);
     resourcesButton.setBounds (header.removeFromRight (80));
     header.removeFromRight (5);
@@ -572,14 +592,26 @@ void MainComponent::audioDeviceIOCallbackWithContext (const float* const* inputC
             if (hasLoops)
                 fftInput += loopRecorder.getLoopMix() * loopLvl;
 
-            // Process through both FFT processors (each has its own random phase generator)
-            float processedL = fftProcessorL.processSample (fftInput, false);
-            float processedR = fftProcessorR.processSample (fftInput, false);
+            // Process through FFT processors
+            // Optimization: when stereo width is 0, only process one FFT (halves CPU load)
+            float outL, outR;
+            if (width < 0.01f)
+            {
+                // Mono mode - only use left processor
+                float processed = fftProcessorL.processSample (fftInput, false);
+                outL = outR = processed;
+            }
+            else
+            {
+                // Stereo mode - process through both FFT processors
+                float processedL = fftProcessorL.processSample (fftInput, false);
+                float processedR = fftProcessorR.processSample (fftInput, false);
 
-            // Stereo width: 0 = mono (average), 1 = full stereo (independent)
-            float mid = (processedL + processedR) * 0.5f;
-            float outL = mid + (processedL - mid) * width;
-            float outR = mid + (processedR - mid) * width;
+                // Stereo width: 0 = mono (average), 1 = full stereo (independent)
+                float mid = (processedL + processedR) * 0.5f;
+                outL = mid + (processedL - mid) * width;
+                outR = mid + (processedR - mid) * width;
+            }
 
             outputSum += outL * outL + outR * outR;
 

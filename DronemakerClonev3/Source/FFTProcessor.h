@@ -40,7 +40,7 @@ public:
     // Harmonic comb filter
     void setHarmonicFilterEnabled(bool b) { harmonicFilterEnabled = b; }
     void setHarmonicRootNote(int note) { harmonicRootNote = juce::jlimit(0, 11, note); }
-    void setHarmonicScaleType(int type) { harmonicScaleType = juce::jlimit(0, 8, type); }
+    void setHarmonicScaleType(int type) { harmonicScaleType = juce::jlimit(0, 10, type); }
     void setHarmonicIntensity(float i) { harmonicIntensity = juce::jlimit(0.0f, 1.0f, i); }
 
 private:

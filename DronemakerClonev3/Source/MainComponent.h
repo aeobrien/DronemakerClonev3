@@ -166,6 +166,7 @@ private:
     juce::TextButton settingsButton { "Settings" };
     juce::TextButton resourcesButton { "Resources" };
     juce::TextButton testButton { "Test" };
+    juce::ComboBox bufferSizeCombo;
     std::atomic<bool> testToneActive { false };
     double testPhase = 0.0;
     int testSamplesRemaining = 0;

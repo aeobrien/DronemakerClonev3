@@ -41,7 +41,7 @@ bool FFTProcessor::isFrequencyInScale(float freq) const
     if (freq < 20.0f) return true;  // Allow very low frequencies through
 
     // Scale intervals (semitones from root that are included)
-    // 0=Octaves, 1=Fifths, 2=Ionian, 3=Dorian, 4=Phrygian, 5=Lydian, 6=Mixolydian, 7=Aeolian, 8=Locrian
+    // 0=Octaves, 1=Fifths, 2=Ionian, 3=Dorian, 4=Phrygian, 5=Lydian, 6=Mixolydian, 7=Aeolian, 8=Locrian, 9=Pent Maj, 10=Pent Min
     static const std::vector<std::vector<int>> scaleIntervals = {
         {0},                            // Octaves (root only)
         {0, 7},                         // Fifths (root + fifth)
@@ -51,7 +51,9 @@ bool FFTProcessor::isFrequencyInScale(float freq) const
         {0, 2, 4, 6, 7, 9, 11},        // Lydian
         {0, 2, 4, 5, 7, 9, 10},        // Mixolydian
         {0, 2, 3, 5, 7, 8, 10},        // Aeolian (Natural Minor)
-        {0, 1, 3, 5, 6, 8, 10}         // Locrian
+        {0, 1, 3, 5, 6, 8, 10},        // Locrian
+        {0, 2, 4, 7, 9},               // Pentatonic Major
+        {0, 3, 5, 7, 10}               // Pentatonic Minor
     };
 
     // Convert frequency to MIDI note number
