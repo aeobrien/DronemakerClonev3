@@ -5,6 +5,7 @@
 
 /**
  * Analog tape simulation with saturation, wow/flutter, and HF loss.
+ * Separate rate and depth controls for wow and flutter.
  */
 class TapeEffect : public EffectBase
 {
@@ -16,16 +17,27 @@ public:
     void reset() override;
     juce::String getName() const override { return "Tape"; }
 
-    void setSaturation (float s) { saturation = juce::jlimit (0.0f, 1.0f, s); }
+    // Saturation (0-2, higher values for extreme saturation)
+    void setSaturation (float s) { saturation = juce::jlimit (0.0f, 2.0f, s); }
     void setBias (float b) { bias = juce::jlimit (0.0f, 1.0f, b); }
+
+    // Wow (slow pitch variation) - separate rate and depth
+    void setWowRate (float hz) { wowRate = juce::jlimit (0.1f, 2.0f, hz); }
     void setWowDepth (float d) { wowDepth = juce::jlimit (0.0f, 1.0f, d); }
+
+    // Flutter (fast pitch variation) - separate rate and depth
+    void setFlutterRate (float hz) { flutterRate = juce::jlimit (2.0f, 15.0f, hz); }
     void setFlutterDepth (float d) { flutterDepth = juce::jlimit (0.0f, 1.0f, d); }
+
+    // HF loss (0-1, higher = more extreme HF attenuation)
     void setHfLoss (float l) { hfLoss = juce::jlimit (0.0f, 1.0f, l); }
     void setDryWet (float dw) { dryWet = juce::jlimit (0.0f, 1.0f, dw); }
 
     float getSaturation() const { return saturation; }
     float getBias() const { return bias; }
+    float getWowRate() const { return wowRate; }
     float getWowDepth() const { return wowDepth; }
+    float getFlutterRate() const { return flutterRate; }
     float getFlutterDepth() const { return flutterDepth; }
     float getHfLoss() const { return hfLoss; }
     float getDryWet() const { return dryWet; }
@@ -34,7 +46,9 @@ private:
     // Parameters
     float saturation = 0.3f;
     float bias = 0.5f;
+    float wowRate = 0.5f;       // Hz (0.1-2)
     float wowDepth = 0.0f;
+    float flutterRate = 6.0f;   // Hz (2-15)
     float flutterDepth = 0.0f;
     float hfLoss = 0.3f;
     float dryWet = 1.0f;
@@ -42,8 +56,6 @@ private:
     // Wow/flutter LFOs
     float wowPhase = 0.0f;
     float flutterPhase = 0.0f;
-    static constexpr float wowRate = 0.5f;      // Hz
-    static constexpr float flutterRate = 6.0f;  // Hz
 
     // Variable delay line for wow/flutter
     static constexpr int delayLineSize = 4096;

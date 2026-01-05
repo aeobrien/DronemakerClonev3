@@ -49,32 +49,6 @@ MainComponent::MainComponent()
     };
     addAndMakeVisible (resourcesButton);
 
-    // Test button
-    testButton.onClick = [this] {
-        auto* dev = deviceManager.getCurrentAudioDevice();
-        const double sr = (dev != nullptr ? dev->getCurrentSampleRate() : 48000.0);
-        testPhase = 0.0;
-        testSamplesRemaining = (int) (0.25 * sr);
-        testToneActive.store (true);
-    };
-    addAndMakeVisible (testButton);
-
-    // Buffer size selector
-    // Note: Sizes above 2048 can cause issues with FFT overlap-add (hopSize is 8192)
-    bufferSizeCombo.addItem ("256", 256);
-    bufferSizeCombo.addItem ("512", 512);
-    bufferSizeCombo.addItem ("1024", 1024);
-    bufferSizeCombo.addItem ("2048", 2048);
-    bufferSizeCombo.setSelectedId (2048);
-    bufferSizeCombo.onChange = [this] {
-        int bufSize = bufferSizeCombo.getSelectedId();
-        juce::AudioDeviceManager::AudioDeviceSetup setup;
-        deviceManager.getAudioDeviceSetup (setup);
-        setup.bufferSize = bufSize;
-        deviceManager.setAudioDeviceSetup (setup, true);
-    };
-    addAndMakeVisible (bufferSizeCombo);
-
     // ===== DRONE SECTION =====
     setupKnob (dryWetKnob, dryWetLabel, "Dry/Wet", 0.0, 1.0, 0.01, 0.2);
     dryWetKnob.onValueChange = [this] {
@@ -146,7 +120,7 @@ MainComponent::MainComponent()
     };
     addAndMakeVisible (phaseToggle);
 
-    // ===== PITCH SECTION =====
+    // ===== PITCH SECTION (now part of Drone column) =====
     setupKnob (pitchKnob, pitchLabel, "Semitones", -24.0, 24.0, 0.1, 0.0, " st");
     pitchKnob.onValueChange = [this] {
         float v = (float) pitchKnob.getValue();
@@ -160,85 +134,6 @@ MainComponent::MainComponent()
         fftProcessorL.setPitchShiftOctaves (v);
         fftProcessorR.setPitchShiftOctaves (v);
     };
-
-    // ===== FILTER SECTION =====
-    setupKnob (highPassKnob, highPassLabel, "HP Freq", 0.0, 5000.0, 1.0, 0.0, " Hz");
-    highPassKnob.setSkewFactorFromMidPoint (500.0);
-    highPassKnob.onValueChange = [this] {
-        float v = (float) highPassKnob.getValue();
-        fftProcessorL.setHighPassFreq (v);
-        fftProcessorR.setHighPassFreq (v);
-    };
-
-    setupKnob (highPassSlopeKnob, highPassSlopeLabel, "HP Slope", 1.0, 8.0, 0.5, 1.0);
-    highPassSlopeKnob.onValueChange = [this] {
-        float v = (float) highPassSlopeKnob.getValue();
-        fftProcessorL.setHighPassSlope (v);
-        fftProcessorR.setHighPassSlope (v);
-    };
-
-    setupKnob (lowPassKnob, lowPassLabel, "LP Freq", 200.0, 20000.0, 1.0, 20000.0, " Hz");
-    lowPassKnob.setSkewFactorFromMidPoint (2000.0);
-    lowPassKnob.onValueChange = [this] {
-        float v = (float) lowPassKnob.getValue();
-        fftProcessorL.setLowPassFreq (v);
-        fftProcessorR.setLowPassFreq (v);
-    };
-
-    setupKnob (lowPassSlopeKnob, lowPassSlopeLabel, "LP Slope", 1.0, 8.0, 0.5, 1.0);
-    lowPassSlopeKnob.onValueChange = [this] {
-        float v = (float) lowPassSlopeKnob.getValue();
-        fftProcessorL.setLowPassSlope (v);
-        fftProcessorR.setLowPassSlope (v);
-    };
-
-    // Harmonic filter
-    harmonicToggle.setToggleState (false, juce::dontSendNotification);
-    harmonicToggle.onClick = [this] {
-        bool v = harmonicToggle.getToggleState();
-        fftProcessorL.setHarmonicFilterEnabled (v);
-        fftProcessorR.setHarmonicFilterEnabled (v);
-    };
-    addAndMakeVisible (harmonicToggle);
-
-    setupKnob (harmonicIntensityKnob, harmonicIntensityLabel, "Intensity", 0.0, 1.0, 0.01, 1.0);
-    harmonicIntensityKnob.onValueChange = [this] {
-        float v = (float) harmonicIntensityKnob.getValue();
-        fftProcessorL.setHarmonicIntensity (v);
-        fftProcessorR.setHarmonicIntensity (v);
-    };
-
-    // Root note combo
-    const char* noteNames[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
-    for (int i = 0; i < 12; ++i)
-        rootNoteCombo.addItem (noteNames[i], i + 1);
-    rootNoteCombo.setSelectedId (1);
-    rootNoteCombo.onChange = [this] {
-        int v = rootNoteCombo.getSelectedId() - 1;
-        fftProcessorL.setHarmonicRootNote (v);
-        fftProcessorR.setHarmonicRootNote (v);
-    };
-    addAndMakeVisible (rootNoteCombo);
-
-    // Scale type combo
-    scaleTypeCombo.addItem ("Octaves", 1);
-    scaleTypeCombo.addItem ("Fifths", 2);
-    scaleTypeCombo.addItem ("Ionian (Major)", 3);
-    scaleTypeCombo.addItem ("Dorian", 4);
-    scaleTypeCombo.addItem ("Phrygian", 5);
-    scaleTypeCombo.addItem ("Lydian", 6);
-    scaleTypeCombo.addItem ("Mixolydian", 7);
-    scaleTypeCombo.addItem ("Aeolian (Minor)", 8);
-    scaleTypeCombo.addItem ("Locrian", 9);
-    scaleTypeCombo.addItem ("Pentatonic Maj", 10);
-    scaleTypeCombo.addItem ("Pentatonic Min", 11);
-    scaleTypeCombo.setSelectedId (1);
-    scaleTypeCombo.onChange = [this] {
-        int v = scaleTypeCombo.getSelectedId() - 1;
-        fftProcessorL.setHarmonicScaleType (v);
-        fftProcessorR.setHarmonicScaleType (v);
-    };
-    addAndMakeVisible (scaleTypeCombo);
 
     // ===== LOOPS SECTION =====
     setupKnob (liveLevelKnob, liveLevelLabel, "Live", 0.0, 1.0, 0.01, 1.0);
@@ -254,8 +149,8 @@ MainComponent::MainComponent()
     // Per-loop controls
     for (int i = 0; i < 4; ++i)
     {
-        // Volume slider (vertical)
-        loopVolumeSliders[i].setSliderStyle (juce::Slider::LinearVertical);
+        // Volume slider (rotary knob)
+        loopVolumeSliders[i].setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
         loopVolumeSliders[i].setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
         loopVolumeSliders[i].setRange (0.0, 1.0, 0.01);
         loopVolumeSliders[i].setValue (1.0);
@@ -264,7 +159,13 @@ MainComponent::MainComponent()
         };
         addAndMakeVisible (loopVolumeSliders[i]);
 
-        // High-pass slider
+        loopVolumeLabels[i].setText ("Vol", juce::dontSendNotification);
+        loopVolumeLabels[i].setJustificationType (juce::Justification::centred);
+        loopVolumeLabels[i].setFont (juce::Font (9.0f));
+        loopVolumeLabels[i].setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+        addAndMakeVisible (loopVolumeLabels[i]);
+
+        // High-pass knob with frequency display
         loopHPSliders[i].setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
         loopHPSliders[i].setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
         loopHPSliders[i].setRange (20.0, 2000.0, 1.0);
@@ -272,10 +173,18 @@ MainComponent::MainComponent()
         loopHPSliders[i].setValue (20.0);
         loopHPSliders[i].onValueChange = [this, i] {
             loopRecorder.setSlotHighPass (i, (float) loopHPSliders[i].getValue());
+            int freq = (int) loopHPSliders[i].getValue();
+            loopHPLabels[i].setText (juce::String (freq) + " Hz", juce::dontSendNotification);
         };
         addAndMakeVisible (loopHPSliders[i]);
 
-        // Low-pass slider
+        loopHPLabels[i].setText ("20 Hz", juce::dontSendNotification);
+        loopHPLabels[i].setJustificationType (juce::Justification::centred);
+        loopHPLabels[i].setFont (juce::Font (9.0f));
+        loopHPLabels[i].setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+        addAndMakeVisible (loopHPLabels[i]);
+
+        // Low-pass knob with frequency display
         loopLPSliders[i].setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
         loopLPSliders[i].setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
         loopLPSliders[i].setRange (500.0, 20000.0, 1.0);
@@ -283,8 +192,19 @@ MainComponent::MainComponent()
         loopLPSliders[i].setValue (20000.0);
         loopLPSliders[i].onValueChange = [this, i] {
             loopRecorder.setSlotLowPass (i, (float) loopLPSliders[i].getValue());
+            int freq = (int) loopLPSliders[i].getValue();
+            if (freq >= 1000)
+                loopLPLabels[i].setText (juce::String (freq / 1000.0f, 1) + "k", juce::dontSendNotification);
+            else
+                loopLPLabels[i].setText (juce::String (freq) + " Hz", juce::dontSendNotification);
         };
         addAndMakeVisible (loopLPSliders[i]);
+
+        loopLPLabels[i].setText ("20k", juce::dontSendNotification);
+        loopLPLabels[i].setJustificationType (juce::Justification::centred);
+        loopLPLabels[i].setFont (juce::Font (9.0f));
+        loopLPLabels[i].setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+        addAndMakeVisible (loopLPLabels[i]);
 
         // Pitch selector
         loopPitchCombos[i].addItem ("-1 oct", 1);
@@ -292,30 +212,27 @@ MainComponent::MainComponent()
         loopPitchCombos[i].addItem ("+1 oct", 3);
         loopPitchCombos[i].setSelectedId (2);
         loopPitchCombos[i].onChange = [this, i] {
-            int octave = loopPitchCombos[i].getSelectedId() - 2;  // -1, 0, or +1
+            int octave = loopPitchCombos[i].getSelectedId() - 2;
             loopRecorder.setSlotPitchOctave (i, octave);
         };
         addAndMakeVisible (loopPitchCombos[i]);
 
+        loopPitchLabels[i].setText ("Pitch", juce::dontSendNotification);
+        loopPitchLabels[i].setJustificationType (juce::Justification::centred);
+        loopPitchLabels[i].setFont (juce::Font (9.0f));
+        loopPitchLabels[i].setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+        addAndMakeVisible (loopPitchLabels[i]);
+
         // Loop button
-        loopButtons[i].setButtonText ("L" + juce::String (i + 1));
+        loopButtons[i].setButtonText ("Loop " + juce::String (i + 1));
         loopButtons[i].setColour (juce::TextButton::buttonColourId, juce::Colours::darkgrey);
         loopButtons[i].onClick = [this, i] {
             if (loopRecorder.isRecording() && loopRecorder.getRecordingSlot() == i)
-            {
-                // Stop recording
                 loopRecorder.stopRecording();
-            }
             else if (loopRecorder.isSlotActive (i))
-            {
-                // Slot has content - clear it on click
                 loopRecorder.clearSlot (i);
-            }
             else
-            {
-                // Start recording to this slot
                 loopRecorder.startRecording (i);
-            }
         };
         addAndMakeVisible (loopButtons[i]);
     }
@@ -333,44 +250,28 @@ MainComponent::MainComponent()
         effectButtons[i].setButtonText (effectNames[i]);
         effectButtons[i].setColour (juce::TextButton::buttonColourId, juce::Colours::darkgrey);
         effectButtons[i].onClick = [this, i] {
-            static juce::int64 lastClickTime = 0;
-            static int lastClickSlot = -1;
-
-            juce::int64 now = juce::Time::currentTimeMillis();
-
-            // Double-click detection (within 400ms on same slot)
-            if (lastClickSlot == i && (now - lastClickTime) < 400)
+            // Single click: select this effect and show its parameters
+            // Right-click or ctrl-click: toggle enable
+            if (juce::ModifierKeys::currentModifiers.isRightButtonDown() ||
+                juce::ModifierKeys::currentModifiers.isCtrlDown())
             {
-                // Double-click: open editor
+                // Toggle enable
                 auto order = effectsChain.getOrder();
-                showEffectEditor (order[i]);
-                lastClickTime = 0;
-                lastClickSlot = -1;
+                int effectType = order[i];
+                auto* effect = effectsChain.getEffect (effectType);
+                if (effect)
+                    effect->setEnabled (!effect->isEnabled());
+                updateEffectButtonColors();
             }
             else
             {
-                // Single click: toggle selection for reordering
-                if (selectedEffectSlot == i)
-                    selectedEffectSlot = -1;  // Deselect
-                else
-                    selectedEffectSlot = i;
+                // Select this slot
+                selectedEffectSlot = i;
                 updateEffectButtonColors();
-                lastClickTime = now;
-                lastClickSlot = i;
+                updateEffectParameterKnobs();
             }
         };
         addAndMakeVisible (effectButtons[i]);
-
-        effectEnableToggles[i].setToggleState (true, juce::dontSendNotification);
-        effectEnableToggles[i].onClick = [this, i] {
-            auto order = effectsChain.getOrder();
-            int effectType = order[i];
-            auto* effect = effectsChain.getEffect (effectType);
-            if (effect)
-                effect->setEnabled (effectEnableToggles[i].getToggleState());
-            updateEffectButtonColors();
-        };
-        addAndMakeVisible (effectEnableToggles[i]);
     }
 
     moveLeftButton.onClick = [this] {
@@ -379,6 +280,7 @@ MainComponent::MainComponent()
             effectsChain.swapPositions (selectedEffectSlot, selectedEffectSlot - 1);
             selectedEffectSlot--;
             updateEffectButtonColors();
+            updateEffectParameterKnobs();
         }
     };
     addAndMakeVisible (moveLeftButton);
@@ -389,12 +291,47 @@ MainComponent::MainComponent()
             effectsChain.swapPositions (selectedEffectSlot, selectedEffectSlot + 1);
             selectedEffectSlot++;
             updateEffectButtonColors();
+            updateEffectParameterKnobs();
         }
     };
     addAndMakeVisible (moveRightButton);
 
+    // ===== EFFECT PARAMETER KNOBS =====
+    for (int i = 0; i < maxParamKnobs; ++i)
+    {
+        paramKnobs[i].setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+        paramKnobs[i].setTextBoxStyle (juce::Slider::TextBoxBelow, false, 50, 14);
+        paramKnobs[i].setVisible (false);
+        addAndMakeVisible (paramKnobs[i]);
+
+        paramLabels[i].setJustificationType (juce::Justification::centred);
+        paramLabels[i].setFont (juce::Font (10.0f));
+        paramLabels[i].setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+        paramLabels[i].setVisible (false);
+        addAndMakeVisible (paramLabels[i]);
+    }
+
+    for (int i = 0; i < 4; ++i)
+    {
+        paramCombos[i].setVisible (false);
+        addAndMakeVisible (paramCombos[i]);
+
+        paramComboLabels[i].setJustificationType (juce::Justification::centred);
+        paramComboLabels[i].setFont (juce::Font (10.0f));
+        paramComboLabels[i].setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+        paramComboLabels[i].setVisible (false);
+        addAndMakeVisible (paramComboLabels[i]);
+
+        paramToggles[i].setVisible (false);
+        addAndMakeVisible (paramToggles[i]);
+    }
+
     startTimerHz (30);
-    setSize (1000, 720);  // Increased height for effects section
+    setSize (1000, 600);
+
+    // Initialize with Filter selected
+    updateEffectButtonColors();
+    updateEffectParameterKnobs();
 }
 
 MainComponent::~MainComponent()
@@ -429,11 +366,15 @@ void MainComponent::updateEffectButtonColors()
     for (int i = 0; i < 6; ++i)
     {
         int effectType = order[i];
-        effectButtons[i].setButtonText (effectNames[effectType]);
-
         auto* effect = effectsChain.getEffect (effectType);
         bool enabled = effect ? effect->isEnabled() : true;
-        effectEnableToggles[i].setToggleState (enabled, juce::dontSendNotification);
+
+        // Show effect name with enable indicator
+        juce::String buttonText = effectNames[effectType];
+        if (!enabled)
+            buttonText = "[" + buttonText + "]";
+
+        effectButtons[i].setButtonText (buttonText);
 
         if (i == selectedEffectSlot)
             effectButtons[i].setColour (juce::TextButton::buttonColourId, juce::Colours::dodgerblue);
@@ -444,232 +385,209 @@ void MainComponent::updateEffectButtonColors()
     }
 }
 
-//==============================================================================
-// Effect Editor Dialog Component
-class EffectEditorContent : public juce::Component
+void MainComponent::updateEffectParameterKnobs()
 {
-public:
-    EffectEditorContent (EffectsChain& chain, int effectType)
-        : effectsChain (chain), type (effectType)
+    // Hide all existing param controls
+    for (int i = 0; i < maxParamKnobs; ++i)
     {
-        setSize (350, 300);
-        buildControls();
+        paramKnobs[i].setVisible (false);
+        paramKnobs[i].onValueChange = nullptr;
+        paramLabels[i].setVisible (false);
+    }
+    for (int i = 0; i < 4; ++i)
+    {
+        paramCombos[i].setVisible (false);
+        paramCombos[i].onChange = nullptr;
+        paramCombos[i].clear();
+        paramComboLabels[i].setVisible (false);
+        paramToggles[i].setVisible (false);
+        paramToggles[i].onClick = nullptr;
     }
 
-    void resized() override
-    {
-        auto bounds = getLocalBounds().reduced (10);
-        bounds.removeFromTop (10);
+    numActiveKnobs = 0;
+    numActiveCombos = 0;
+    numActiveToggles = 0;
 
-        for (auto& slider : sliders)
-        {
-            auto row = bounds.removeFromTop (50);
-            labels[&slider - sliders.data()]->setBounds (row.removeFromTop (16));
-            slider->setBounds (row.reduced (0, 2));
-        }
+    if (selectedEffectSlot < 0)
+        return;
 
-        for (auto& combo : combos)
-        {
-            auto row = bounds.removeFromTop (40);
-            comboLabels[&combo - combos.data()]->setBounds (row.removeFromTop (16));
-            combo->setBounds (row.removeFromTop (22).reduced (0, 2));
-        }
+    auto order = effectsChain.getOrder();
+    int effectType = order[selectedEffectSlot];
 
-        for (auto& toggle : toggles)
-        {
-            bounds.removeFromTop (5);
-            toggle->setBounds (bounds.removeFromTop (22));
-        }
-    }
+    auto addKnob = [this](const juce::String& name, double min, double max, double step,
+                          double value, std::function<void(float)> onChange, const juce::String& suffix = "") {
+        if (numActiveKnobs >= maxParamKnobs) return;
+        auto& knob = paramKnobs[numActiveKnobs];
+        auto& label = paramLabels[numActiveKnobs];
 
-private:
-    EffectsChain& effectsChain;
-    int type;
+        knob.setRange (min, max, step);
+        knob.setValue (value, juce::dontSendNotification);
+        knob.setTextValueSuffix (suffix);
+        knob.onValueChange = [&knob, onChange] { onChange ((float) knob.getValue()); };
+        knob.setVisible (true);
 
-    std::vector<std::unique_ptr<juce::Slider>> sliders;
-    std::vector<std::unique_ptr<juce::Label>> labels;
-    std::vector<std::unique_ptr<juce::ComboBox>> combos;
-    std::vector<std::unique_ptr<juce::Label>> comboLabels;
-    std::vector<std::unique_ptr<juce::ToggleButton>> toggles;
+        label.setText (name, juce::dontSendNotification);
+        label.setVisible (true);
 
-    void addSlider (const juce::String& name, double min, double max, double step, double value,
-                    std::function<void(float)> onChange, const juce::String& suffix = "")
-    {
-        auto label = std::make_unique<juce::Label>();
-        label->setText (name, juce::dontSendNotification);
-        label->setFont (juce::Font (12.0f));
-        addAndMakeVisible (*label);
-        labels.push_back (std::move (label));
+        numActiveKnobs++;
+    };
 
-        auto slider = std::make_unique<juce::Slider>();
-        slider->setSliderStyle (juce::Slider::LinearHorizontal);
-        slider->setTextBoxStyle (juce::Slider::TextBoxRight, false, 60, 20);
-        slider->setRange (min, max, step);
-        slider->setValue (value);
-        if (suffix.isNotEmpty())
-            slider->setTextValueSuffix (suffix);
-        slider->onValueChange = [slider = slider.get(), onChange] {
-            onChange (static_cast<float> (slider->getValue()));
-        };
-        addAndMakeVisible (*slider);
-        sliders.push_back (std::move (slider));
-    }
+    auto addCombo = [this](const juce::String& name, juce::StringArray items, int selectedIdx,
+                           std::function<void(int)> onChange) {
+        if (numActiveCombos >= 4) return;
+        auto& combo = paramCombos[numActiveCombos];
+        auto& label = paramComboLabels[numActiveCombos];
 
-    void addCombo (const juce::String& name, juce::StringArray items, int selectedIdx,
-                   std::function<void(int)> onChange)
-    {
-        auto label = std::make_unique<juce::Label>();
-        label->setText (name, juce::dontSendNotification);
-        label->setFont (juce::Font (12.0f));
-        addAndMakeVisible (*label);
-        comboLabels.push_back (std::move (label));
-
-        auto combo = std::make_unique<juce::ComboBox>();
+        combo.clear();
         for (int i = 0; i < items.size(); ++i)
-            combo->addItem (items[i], i + 1);
-        combo->setSelectedId (selectedIdx + 1);
-        combo->onChange = [combo = combo.get(), onChange] {
-            onChange (combo->getSelectedId() - 1);
-        };
-        addAndMakeVisible (*combo);
-        combos.push_back (std::move (combo));
-    }
+            combo.addItem (items[i], i + 1);
+        combo.setSelectedId (selectedIdx + 1, juce::dontSendNotification);
+        combo.onChange = [&combo, onChange] { onChange (combo.getSelectedId() - 1); };
+        combo.setVisible (true);
 
-    void addToggle (const juce::String& name, bool value, std::function<void(bool)> onChange)
+        label.setText (name, juce::dontSendNotification);
+        label.setVisible (true);
+
+        numActiveCombos++;
+    };
+
+    auto addToggle = [this](const juce::String& name, bool value, std::function<void(bool)> onChange) {
+        if (numActiveToggles >= 4) return;
+        auto& toggle = paramToggles[numActiveToggles];
+
+        toggle.setButtonText (name);
+        toggle.setToggleState (value, juce::dontSendNotification);
+        toggle.onClick = [&toggle, onChange] { onChange (toggle.getToggleState()); };
+        toggle.setVisible (true);
+
+        numActiveToggles++;
+    };
+
+    switch (effectType)
     {
-        auto toggle = std::make_unique<juce::ToggleButton> (name);
-        toggle->setToggleState (value, juce::dontSendNotification);
-        toggle->onClick = [toggle = toggle.get(), onChange] {
-            onChange (toggle->getToggleState());
-        };
-        addAndMakeVisible (*toggle);
-        toggles.push_back (std::move (toggle));
+        case EffectsChain::Filter:
+            if (auto* fx = effectsChain.getFilter())
+            {
+                addKnob ("HP Freq", 20, 5000, 1, fx->getHighPassFreq(),
+                         [fx](float v) { fx->setHighPassFreq (v); }, " Hz");
+                addKnob ("HP Poles", 1, 8, 1, fx->getHighPassPoles(),
+                         [fx](float v) { fx->setHighPassPoles ((int) v); });
+                addKnob ("LP Freq", 200, 20000, 1, fx->getLowPassFreq(),
+                         [fx](float v) { fx->setLowPassFreq (v); }, " Hz");
+                addKnob ("LP Poles", 1, 8, 1, fx->getLowPassPoles(),
+                         [fx](float v) { fx->setLowPassPoles ((int) v); });
+                addKnob ("Harmonic", 0, 1, 0.01, fx->getHarmonicIntensity(),
+                         [fx](float v) { fx->setHarmonicIntensity (v); });
+                addToggle ("Harmonic On", fx->isHarmonicEnabled(),
+                           [fx](bool v) { fx->setHarmonicEnabled (v); });
+                addCombo ("Root", { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" },
+                          fx->getRootNote(), [fx](int v) { fx->setRootNote (v); });
+                addCombo ("Scale", { "Oct", "5th", "Ion", "Dor", "Phr", "Lyd", "Mix", "Aeo", "Loc", "PMaj", "PMin" },
+                          fx->getScaleType(), [fx](int v) { fx->setScaleType (v); });
+            }
+            break;
+
+        case EffectsChain::Delay:
+            if (auto* fx = effectsChain.getDelay())
+            {
+                addKnob ("Time", 1, 2000, 1, fx->getDelayTimeMs(),
+                         [fx](float v) { fx->setDelayTimeMs (v); }, " ms");
+                addKnob ("Feedback", 0, 0.95, 0.01, fx->getFeedback(),
+                         [fx](float v) { fx->setFeedback (v); });
+                addKnob ("Dry/Wet", 0, 1, 0.01, fx->getDryWet(),
+                         [fx](float v) { fx->setDryWet (v); });
+                addToggle ("Ping-Pong", fx->isPingPong(),
+                           [fx](bool v) { fx->setPingPong (v); });
+            }
+            break;
+
+        case EffectsChain::Granular:
+            if (auto* fx = effectsChain.getGranular())
+            {
+                addKnob ("Grain Min", 10, 2000, 1, fx->getGrainSizeMin(),
+                         [fx](float v) { fx->setGrainSizeMin (v); }, " ms");
+                addKnob ("Grain Max", 10, 2000, 1, fx->getGrainSizeMax(),
+                         [fx](float v) { fx->setGrainSizeMax (v); }, " ms");
+                addKnob ("Delay Min", 10, 4000, 1, fx->getDelayMin(),
+                         [fx](float v) { fx->setDelayMin (v); }, " ms");
+                addKnob ("Delay Max", 10, 4000, 1, fx->getDelayMax(),
+                         [fx](float v) { fx->setDelayMax (v); }, " ms");
+                addKnob ("Pitch", -24, 24, 0.1, fx->getPitch(),
+                         [fx](float v) { fx->setPitch (v); }, " st");
+                addKnob ("Density", 0.1, 4, 0.1, fx->getDensity(),
+                         [fx](float v) { fx->setDensity (v); });
+                addKnob ("Spread", 0, 1, 0.01, fx->getSpread(),
+                         [fx](float v) { fx->setSpread (v); });
+                addKnob ("Dry/Wet", 0, 1, 0.01, fx->getDryWet(),
+                         [fx](float v) { fx->setDryWet (v); });
+            }
+            break;
+
+        case EffectsChain::Tremolo:
+            if (auto* fx = effectsChain.getTremolo())
+            {
+                addKnob ("Rate", 0.1, 20, 0.1, fx->getRate(),
+                         [fx](float v) { fx->setRate (v); }, " Hz");
+                addKnob ("Depth", 0, 1, 0.01, fx->getDepth(),
+                         [fx](float v) { fx->setDepth (v); });
+                addCombo ("Wave", { "Sine", "Triangle", "Square" }, fx->getWaveform(),
+                          [fx](int v) { fx->setWaveform (v); });
+                addToggle ("Stereo", fx->isStereo(),
+                           [fx](bool v) { fx->setStereo (v); });
+            }
+            break;
+
+        case EffectsChain::Distortion:
+            if (auto* fx = effectsChain.getDistortion())
+            {
+                addCombo ("Type", { "Soft", "Hard", "Fold", "Crush" }, fx->getAlgorithm(),
+                          [fx](int v) { fx->setAlgorithm (v); });
+                addKnob ("Drive", 1, 20, 0.1, fx->getDrive(),
+                         [fx](float v) { fx->setDrive (v); });
+                addKnob ("Tone", 0, 1, 0.01, fx->getTone(),
+                         [fx](float v) { fx->setTone (v); });
+                addKnob ("Dry/Wet", 0, 1, 0.01, fx->getDryWet(),
+                         [fx](float v) { fx->setDryWet (v); });
+                if (fx->getAlgorithm() == DistortionEffect::Bitcrush)
+                {
+                    addKnob ("Bits", 1, 16, 0.5, fx->getBitDepth(),
+                             [fx](float v) { fx->setBitDepth (v); });
+                    addKnob ("SR Reduce", 1, 64, 1, fx->getSampleRateReduction(),
+                             [fx](float v) { fx->setSampleRateReduction (v); }, "x");
+                }
+            }
+            break;
+
+        case EffectsChain::Tape:
+            if (auto* fx = effectsChain.getTape())
+            {
+                addKnob ("Saturation", 0, 2, 0.01, fx->getSaturation(),
+                         [fx](float v) { fx->setSaturation (v); });
+                addKnob ("Bias", 0, 1, 0.01, fx->getBias(),
+                         [fx](float v) { fx->setBias (v); });
+                addKnob ("Wow Rate", 0.1, 2, 0.01, fx->getWowRate(),
+                         [fx](float v) { fx->setWowRate (v); }, " Hz");
+                addKnob ("Wow Depth", 0, 1, 0.01, fx->getWowDepth(),
+                         [fx](float v) { fx->setWowDepth (v); });
+                addKnob ("Flutter Rate", 2, 15, 0.1, fx->getFlutterRate(),
+                         [fx](float v) { fx->setFlutterRate (v); }, " Hz");
+                addKnob ("Flutter Depth", 0, 1, 0.01, fx->getFlutterDepth(),
+                         [fx](float v) { fx->setFlutterDepth (v); });
+                addKnob ("HF Loss", 0, 1, 0.01, fx->getHfLoss(),
+                         [fx](float v) { fx->setHfLoss (v); });
+                addKnob ("Dry/Wet", 0, 1, 0.01, fx->getDryWet(),
+                         [fx](float v) { fx->setDryWet (v); });
+            }
+            break;
     }
 
-    void buildControls()
-    {
-        switch (type)
-        {
-            case EffectsChain::Filter:
-                if (auto* fx = effectsChain.getFilter())
-                {
-                    addSlider ("High-Pass Freq", 20, 5000, 1, fx->getHighPassFreq(),
-                               [fx](float v) { fx->setHighPassFreq (v); }, " Hz");
-                    addSlider ("HP Poles", 1, 8, 1, fx->getHighPassPoles(),
-                               [fx](float v) { fx->setHighPassPoles ((int) v); });
-                    addSlider ("Low-Pass Freq", 200, 20000, 1, fx->getLowPassFreq(),
-                               [fx](float v) { fx->setLowPassFreq (v); }, " Hz");
-                    addSlider ("LP Poles", 1, 8, 1, fx->getLowPassPoles(),
-                               [fx](float v) { fx->setLowPassPoles ((int) v); });
-                    addToggle ("Harmonic Filter", fx->isHarmonicEnabled(),
-                               [fx](bool v) { fx->setHarmonicEnabled (v); });
-                    addSlider ("Harmonic Intensity", 0, 1, 0.01, fx->getHarmonicIntensity(),
-                               [fx](float v) { fx->setHarmonicIntensity (v); });
-                }
-                break;
-
-            case EffectsChain::Delay:
-                if (auto* fx = effectsChain.getDelay())
-                {
-                    addSlider ("Delay Time", 1, 2000, 1, fx->getDelayTimeMs(),
-                               [fx](float v) { fx->setDelayTimeMs (v); }, " ms");
-                    addSlider ("Feedback", 0, 0.95, 0.01, fx->getFeedback(),
-                               [fx](float v) { fx->setFeedback (v); });
-                    addSlider ("Dry/Wet", 0, 1, 0.01, fx->getDryWet(),
-                               [fx](float v) { fx->setDryWet (v); });
-                    addToggle ("Ping-Pong", fx->isPingPong(),
-                               [fx](bool v) { fx->setPingPong (v); });
-                }
-                break;
-
-            case EffectsChain::Granular:
-                if (auto* fx = effectsChain.getGranular())
-                {
-                    addSlider ("Grain Size", 10, 500, 1, fx->getGrainSize(),
-                               [fx](float v) { fx->setGrainSize (v); }, " ms");
-                    addSlider ("Pitch", -24, 24, 0.1, fx->getPitch(),
-                               [fx](float v) { fx->setPitch (v); }, " st");
-                    addSlider ("Density", 0.1, 4, 0.1, fx->getDensity(),
-                               [fx](float v) { fx->setDensity (v); });
-                    addSlider ("Spread", 0, 1, 0.01, fx->getSpread(),
-                               [fx](float v) { fx->setSpread (v); });
-                    addSlider ("Dry/Wet", 0, 1, 0.01, fx->getDryWet(),
-                               [fx](float v) { fx->setDryWet (v); });
-                }
-                break;
-
-            case EffectsChain::Tremolo:
-                if (auto* fx = effectsChain.getTremolo())
-                {
-                    addSlider ("Rate", 0.1, 20, 0.1, fx->getRate(),
-                               [fx](float v) { fx->setRate (v); }, " Hz");
-                    addSlider ("Depth", 0, 1, 0.01, fx->getDepth(),
-                               [fx](float v) { fx->setDepth (v); });
-                    addCombo ("Waveform", { "Sine", "Triangle", "Square" }, fx->getWaveform(),
-                              [fx](int v) { fx->setWaveform (v); });
-                    addToggle ("Stereo", fx->isStereo(),
-                               [fx](bool v) { fx->setStereo (v); });
-                }
-                break;
-
-            case EffectsChain::Distortion:
-                if (auto* fx = effectsChain.getDistortion())
-                {
-                    addCombo ("Algorithm", { "Soft Clip", "Hard Clip", "Wavefold", "Bitcrush" },
-                              fx->getAlgorithm(), [fx](int v) { fx->setAlgorithm (v); });
-                    addSlider ("Drive", 1, 20, 0.1, fx->getDrive(),
-                               [fx](float v) { fx->setDrive (v); });
-                    addSlider ("Tone", 0, 1, 0.01, fx->getTone(),
-                               [fx](float v) { fx->setTone (v); });
-                    addSlider ("Dry/Wet", 0, 1, 0.01, fx->getDryWet(),
-                               [fx](float v) { fx->setDryWet (v); });
-                    addSlider ("Bit Depth", 1, 16, 0.5, fx->getBitDepth(),
-                               [fx](float v) { fx->setBitDepth (v); }, " bits");
-                }
-                break;
-
-            case EffectsChain::Tape:
-                if (auto* fx = effectsChain.getTape())
-                {
-                    addSlider ("Saturation", 0, 1, 0.01, fx->getSaturation(),
-                               [fx](float v) { fx->setSaturation (v); });
-                    addSlider ("Bias", 0, 1, 0.01, fx->getBias(),
-                               [fx](float v) { fx->setBias (v); });
-                    addSlider ("Wow", 0, 1, 0.01, fx->getWowDepth(),
-                               [fx](float v) { fx->setWowDepth (v); });
-                    addSlider ("Flutter", 0, 1, 0.01, fx->getFlutterDepth(),
-                               [fx](float v) { fx->setFlutterDepth (v); });
-                    addSlider ("HF Loss", 0, 1, 0.01, fx->getHfLoss(),
-                               [fx](float v) { fx->setHfLoss (v); });
-                    addSlider ("Dry/Wet", 0, 1, 0.01, fx->getDryWet(),
-                               [fx](float v) { fx->setDryWet (v); });
-                }
-                break;
-        }
-    }
-};
-
-void MainComponent::showEffectEditor (int effectType)
-{
-    const char* effectNames[] = { "Filter", "Delay", "Granular", "Tremolo", "Distortion", "Tape" };
-
-    auto* editor = new EffectEditorContent (effectsChain, effectType);
-
-    juce::DialogWindow::LaunchOptions options;
-    options.content.setOwned (editor);
-    options.dialogTitle = juce::String (effectNames[effectType]) + " Settings";
-    options.dialogBackgroundColour = juce::Colour (0xff1a1a2e);
-    options.escapeKeyTriggersCloseButton = true;
-    options.useNativeTitleBar = true;
-    options.resizable = false;
-    options.launchAsync();
+    resized();
 }
 
 void MainComponent::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colour (0xff1a1a2e));
 
-    // Section backgrounds
     auto drawSection = [&](juce::Rectangle<int> area, const juce::String& title) {
         g.setColour (juce::Colour (0xff16213e));
         g.fillRoundedRectangle (area.toFloat(), 8.0f);
@@ -682,99 +600,123 @@ void MainComponent::paint (juce::Graphics& g)
     };
 
     auto bounds = getLocalBounds().reduced (10);
-    bounds.removeFromTop (55); // Header area with meters
+    bounds.removeFromTop (40);  // Header area
 
-    // Effects section at bottom
-    auto effectsArea = bounds.removeFromBottom (80).reduced (5);
+    // Effect parameters section at bottom
+    auto paramArea = bounds.removeFromBottom (100).reduced (5);
+    drawSection (paramArea, "EFFECT PARAMETERS");
+
+    bounds.removeFromBottom (5);
+
+    // Effects chain row
+    auto effectsArea = bounds.removeFromBottom (55).reduced (5);
     drawSection (effectsArea, "EFFECTS CHAIN");
 
-    bounds.removeFromBottom (10);
+    bounds.removeFromBottom (5);
 
-    const int sectionWidth = (bounds.getWidth() - 30) / 4;
+    // Two main columns
+    int columnWidth = (bounds.getWidth() - 10) / 2;
 
-    // Drone section
-    drawSection (bounds.removeFromLeft (sectionWidth).reduced (5), "DRONE");
+    // Drone & Pitch section (left column)
+    drawSection (bounds.removeFromLeft (columnWidth).reduced (5), "DRONE & PITCH");
     bounds.removeFromLeft (10);
 
-    // Pitch section
-    drawSection (bounds.removeFromLeft (sectionWidth).reduced (5), "PITCH");
-    bounds.removeFromLeft (10);
-
-    // Filter section
-    drawSection (bounds.removeFromLeft (sectionWidth).reduced (5), "FILTERS");
-    bounds.removeFromLeft (10);
-
-    // Loops section
+    // Loops section (right column)
     drawSection (bounds.reduced (5), "LOOPS");
 
-    // Input level meter
-    auto meterBounds = getLocalBounds().reduced (10);
+    // Input/Output meters
     int meterY = 10;
-    int meterHeight = 14;
+    int meterHeight = 12;
 
     g.setColour (juce::Colours::grey.darker());
-    g.fillRoundedRectangle (15.0f, (float)meterY, 180.0f, (float)meterHeight, 3.0f);
+    g.fillRoundedRectangle (15.0f, (float)meterY, 150.0f, (float)meterHeight, 3.0f);
     g.setColour (juce::Colours::limegreen);
     const float inLevel = juce::jlimit (0.0f, 1.0f, inputLevel.load());
-    g.fillRoundedRectangle (15.0f, (float)meterY, 180.0f * inLevel, (float)meterHeight, 3.0f);
+    g.fillRoundedRectangle (15.0f, (float)meterY, 150.0f * inLevel, (float)meterHeight, 3.0f);
     g.setColour (juce::Colours::white);
     g.setFont (10.0f);
-    g.drawText ("IN", 15, meterY, 180, meterHeight, juce::Justification::centred);
+    g.drawText ("IN", 15, meterY, 150, meterHeight, juce::Justification::centred);
 
-    // Output level meter
-    meterY += meterHeight + 4;
+    meterY += meterHeight + 3;
     g.setColour (juce::Colours::grey.darker());
-    g.fillRoundedRectangle (15.0f, (float)meterY, 180.0f, (float)meterHeight, 3.0f);
+    g.fillRoundedRectangle (15.0f, (float)meterY, 150.0f, (float)meterHeight, 3.0f);
     g.setColour (juce::Colours::cyan);
     const float outLevel = juce::jlimit (0.0f, 1.0f, outputLevel.load());
-    g.fillRoundedRectangle (15.0f, (float)meterY, 180.0f * outLevel, (float)meterHeight, 3.0f);
+    g.fillRoundedRectangle (15.0f, (float)meterY, 150.0f * outLevel, (float)meterHeight, 3.0f);
     g.setColour (juce::Colours::white);
-    g.drawText ("OUT", 15, meterY, 180, meterHeight, juce::Justification::centred);
+    g.drawText ("OUT", 15, meterY, 150, meterHeight, juce::Justification::centred);
 }
 
 void MainComponent::resized()
 {
     auto bounds = getLocalBounds().reduced (10);
 
-    // Header row with buttons
-    auto header = bounds.removeFromTop (45);
-    header.removeFromLeft (200); // Space for meters
-    testButton.setBounds (header.removeFromLeft (50));
-    header.removeFromLeft (5);
-    bufferSizeCombo.setBounds (header.removeFromLeft (80));
-    header.removeFromLeft (5);
+    // Header row
+    auto header = bounds.removeFromTop (35);
+    header.removeFromLeft (170);  // Space for meters
     resourcesButton.setBounds (header.removeFromRight (80));
     header.removeFromRight (5);
     settingsButton.setBounds (header.removeFromRight (70));
 
-    bounds.removeFromTop (10);
+    bounds.removeFromTop (5);
 
-    // Effects chain section at bottom
-    auto effectsArea = bounds.removeFromBottom (80).reduced (5);
-    effectsArea.removeFromTop (28);  // Title space
+    // Effect parameters section at bottom
+    auto paramArea = bounds.removeFromBottom (100).reduced (5);
+    paramArea.removeFromTop (25);  // Title space
 
-    // Move buttons on the left
-    auto moveArea = effectsArea.removeFromLeft (60);
-    moveLeftButton.setBounds (moveArea.removeFromTop (25).reduced (2));
-    moveArea.removeFromTop (5);
-    moveRightButton.setBounds (moveArea.removeFromTop (25).reduced (2));
+    // Layout parameter knobs horizontally
+    const int paramKnobSize = 55;
+    const int paramLabelHeight = 14;
+    int totalParamWidth = numActiveKnobs * (paramKnobSize + 5) + numActiveCombos * 70 + numActiveToggles * 80;
+    int paramStartX = paramArea.getX() + (paramArea.getWidth() - totalParamWidth) / 2;
 
-    // Effect buttons and toggles
-    const int effectWidth = (effectsArea.getWidth() - 20) / 6;
-    effectsArea.removeFromLeft (10);
-
-    for (int i = 0; i < 6; ++i)
+    int paramX = paramStartX;
+    for (int i = 0; i < numActiveKnobs; ++i)
     {
-        auto effectSlot = effectsArea.removeFromLeft (effectWidth);
-        effectButtons[i].setBounds (effectSlot.removeFromTop (28).reduced (2));
-        effectEnableToggles[i].setBounds (effectSlot.removeFromTop (20).reduced (4, 0));
+        paramLabels[i].setBounds (paramX, paramArea.getY(), paramKnobSize, paramLabelHeight);
+        paramKnobs[i].setBounds (paramX, paramArea.getY() + paramLabelHeight, paramKnobSize, paramArea.getHeight() - paramLabelHeight - 5);
+        paramX += paramKnobSize + 5;
     }
 
-    bounds.removeFromBottom (10);
+    for (int i = 0; i < numActiveCombos; ++i)
+    {
+        paramComboLabels[i].setBounds (paramX, paramArea.getY(), 65, paramLabelHeight);
+        paramCombos[i].setBounds (paramX, paramArea.getY() + paramLabelHeight + 20, 65, 22);
+        paramX += 70;
+    }
 
-    const int sectionWidth = (bounds.getWidth() - 30) / 4;
-    const int knobSize = 60;
-    const int labelHeight = 16;
+    for (int i = 0; i < numActiveToggles; ++i)
+    {
+        paramToggles[i].setBounds (paramX, paramArea.getY() + paramLabelHeight + 20, 75, 22);
+        paramX += 80;
+    }
+
+    bounds.removeFromBottom (5);
+
+    // Effects chain row
+    auto effectsArea = bounds.removeFromBottom (55).reduced (5);
+    effectsArea.removeFromTop (25);  // Title space
+
+    // Move buttons on left - same size
+    const int moveButtonSize = 25;
+    moveLeftButton.setBounds (effectsArea.removeFromLeft (moveButtonSize).reduced (2));
+    effectsArea.removeFromLeft (3);
+    moveRightButton.setBounds (effectsArea.removeFromLeft (moveButtonSize).reduced (2));
+    effectsArea.removeFromLeft (10);
+
+    // Effect buttons
+    const int effectWidth = (effectsArea.getWidth() - 10) / 6;
+    for (int i = 0; i < 6; ++i)
+    {
+        effectButtons[i].setBounds (effectsArea.removeFromLeft (effectWidth).reduced (2));
+    }
+
+    bounds.removeFromBottom (5);
+
+    // Two main columns
+    int columnWidth = (bounds.getWidth() - 10) / 2;
+    const int knobSize = 55;
+    const int labelHeight = 14;
 
     auto layoutKnobWithLabel = [&](juce::Slider& knob, juce::Label& label, juce::Rectangle<int>& area) {
         auto knobArea = area.removeFromLeft (knobSize + 4);
@@ -782,9 +724,9 @@ void MainComponent::resized()
         knob.setBounds (knobArea.reduced (2));
     };
 
-    // ===== DRONE SECTION =====
-    auto droneArea = bounds.removeFromLeft (sectionWidth).reduced (5);
-    droneArea.removeFromTop (28); // Title space
+    // ===== DRONE & PITCH SECTION (left column) =====
+    auto droneArea = bounds.removeFromLeft (columnWidth).reduced (5);
+    droneArea.removeFromTop (25);  // Title space
 
     auto droneRow1 = droneArea.removeFromTop (knobSize + labelHeight + 5);
     layoutKnobWithLabel (dryWetKnob, dryWetLabel, droneRow1);
@@ -798,100 +740,72 @@ void MainComponent::resized()
     layoutKnobWithLabel (historyKnob, historyLabel, droneRow2);
     layoutKnobWithLabel (stereoWidthKnob, stereoWidthLabel, droneRow2);
 
-    droneArea.removeFromTop (5);
-    peakToggle.setBounds (droneArea.removeFromTop (20));
+    droneArea.removeFromTop (3);
+    peakToggle.setBounds (droneArea.removeFromTop (18).removeFromLeft (100));
     droneArea.removeFromTop (2);
-    phaseToggle.setBounds (droneArea.removeFromTop (20));
+    phaseToggle.setBounds (droneArea.removeFromTop (18).removeFromLeft (120));
 
-    bounds.removeFromLeft (10);
-
-    // ===== PITCH SECTION =====
-    auto pitchArea = bounds.removeFromLeft (sectionWidth).reduced (5);
-    pitchArea.removeFromTop (28);
-
-    auto pitchRow = pitchArea.removeFromTop (knobSize + labelHeight + 5);
+    // Pitch controls below drone
+    droneArea.removeFromTop (5);
+    auto pitchRow = droneArea.removeFromTop (knobSize + labelHeight + 5);
     layoutKnobWithLabel (pitchKnob, pitchLabel, pitchRow);
     layoutKnobWithLabel (octaveKnob, octaveLabel, pitchRow);
 
     bounds.removeFromLeft (10);
 
-    // ===== FILTER SECTION =====
-    auto filterArea = bounds.removeFromLeft (sectionWidth).reduced (5);
-    filterArea.removeFromTop (28);
-
-    // HP and LP row
-    auto filterRow1 = filterArea.removeFromTop (knobSize + labelHeight + 5);
-    layoutKnobWithLabel (highPassKnob, highPassLabel, filterRow1);
-    layoutKnobWithLabel (highPassSlopeKnob, highPassSlopeLabel, filterRow1);
-
-    auto filterRow2 = filterArea.removeFromTop (knobSize + labelHeight + 5);
-    layoutKnobWithLabel (lowPassKnob, lowPassLabel, filterRow2);
-    layoutKnobWithLabel (lowPassSlopeKnob, lowPassSlopeLabel, filterRow2);
-
-    filterArea.removeFromTop (5);
-
-    // Harmonic filter row
-    harmonicToggle.setBounds (filterArea.removeFromTop (20).removeFromLeft (100));
-
-    auto harmRow2 = filterArea.removeFromTop (knobSize + labelHeight + 5);
-    layoutKnobWithLabel (harmonicIntensityKnob, harmonicIntensityLabel, harmRow2);
-
-    filterArea.removeFromTop (2);
-    auto comboRow = filterArea.removeFromTop (24);
-    rootNoteCombo.setBounds (comboRow.removeFromLeft (55));
-    comboRow.removeFromLeft (5);
-    scaleTypeCombo.setBounds (comboRow.removeFromLeft (120));
-
-    bounds.removeFromLeft (10);
-
-    // ===== LOOPS SECTION =====
+    // ===== LOOPS SECTION (right column) =====
     auto loopsArea = bounds.reduced (5);
-    loopsArea.removeFromTop (28);
+    loopsArea.removeFromTop (25);  // Title space
 
-    // Live/Loop level knobs at top
+    // Live/Loop level knobs centered at top
     auto loopsRow1 = loopsArea.removeFromTop (knobSize + labelHeight + 5);
+    int mixKnobsWidth = (knobSize + 4) * 2;
+    loopsRow1.removeFromLeft ((loopsRow1.getWidth() - mixKnobsWidth) / 2);
     layoutKnobWithLabel (liveLevelKnob, liveLevelLabel, loopsRow1);
     layoutKnobWithLabel (loopLevelKnob, loopLevelLabel, loopsRow1);
 
-    loopsArea.removeFromTop (5);
+    loopsArea.removeFromTop (10);
 
-    // Per-loop controls - 4 vertical strips
-    auto loopStripsArea = loopsArea.removeFromTop (200);
-    const int stripWidth = loopStripsArea.getWidth() / 4;
+    // Per-loop controls - 4 horizontal strips
+    const int loopStripWidth = loopsArea.getWidth() / 4;
     const int smallKnob = 40;
 
     for (int i = 0; i < 4; ++i)
     {
-        auto strip = loopStripsArea.removeFromLeft (stripWidth).reduced (2);
+        auto strip = loopsArea.removeFromLeft (loopStripWidth).reduced (5, 0);
+        int stripTop = strip.getY();
 
-        // Volume slider (vertical, at top)
-        loopVolumeSliders[i].setBounds (strip.removeFromTop (60).reduced (8, 0));
+        // Loop button at top
+        loopButtons[i].setBounds (strip.removeFromTop (28).reduced (2, 0));
+        strip.removeFromTop (5);
+
+        // Volume knob
+        loopVolumeLabels[i].setBounds (strip.removeFromTop (12));
+        loopVolumeSliders[i].setBounds (strip.removeFromTop (smallKnob).reduced (4, 0));
+        strip.removeFromTop (2);
 
         // HP knob
+        loopHPLabels[i].setBounds (strip.removeFromTop (12));
         loopHPSliders[i].setBounds (strip.removeFromTop (smallKnob).reduced (4, 0));
+        strip.removeFromTop (2);
 
         // LP knob
+        loopLPLabels[i].setBounds (strip.removeFromTop (12));
         loopLPSliders[i].setBounds (strip.removeFromTop (smallKnob).reduced (4, 0));
+        strip.removeFromTop (2);
 
         // Pitch selector
-        loopPitchCombos[i].setBounds (strip.removeFromTop (22).reduced (2, 0));
-
-        strip.removeFromTop (4);
-
-        // Loop button at bottom
-        loopButtons[i].setBounds (strip.removeFromTop (28).reduced (4, 0));
+        loopPitchLabels[i].setBounds (strip.removeFromTop (12));
+        loopPitchCombos[i].setBounds (strip.removeFromTop (20).reduced (2, 0));
     }
 
-    loopsArea.removeFromTop (5);
-    clearLoopsButton.setBounds (loopsArea.removeFromTop (25).removeFromLeft (80));
+    // Clear button centered at bottom
+    auto clearArea = loopsArea.removeFromBottom (30);
+    clearLoopsButton.setBounds (clearArea.withSizeKeepingCentre (80, 25));
 }
 
 void MainComponent::audioDeviceAboutToStart (juce::AudioIODevice* device)
 {
-    testPhase = 0.0;
-    testToneActive.store (false);
-    testSamplesRemaining = 0;
-
     const int blockSize = device->getCurrentBufferSizeSamples();
     monoBuffer.setSize (1, blockSize, false, false, true);
     monoBuffer.clear();
@@ -910,10 +824,7 @@ void MainComponent::audioDeviceAboutToStart (juce::AudioIODevice* device)
     fftProcessorR.setSampleRate (sr);
     fftProcessorR.reset();
 
-    // Initialize loop recorder
     loopRecorder.prepareToPlay (currentSampleRate, blockSize);
-
-    // Initialize effects chain
     effectsChain.prepareToPlay (currentSampleRate, blockSize);
 }
 
@@ -928,17 +839,13 @@ void MainComponent::audioDeviceIOCallbackWithContext (const float* const* inputC
                                                      int numSamples,
                                                      const juce::AudioIODeviceCallbackContext&)
 {
-    // Start timing for CPU load measurement
     const auto startTime = juce::Time::getHighResolutionTicks();
 
     for (int ch = 0; ch < numOutputChannels; ++ch)
         if (auto* out = outputChannelData[ch])
             juce::FloatVectorOperations::clear (out, numSamples);
 
-    if (numSamples <= 0)
-        return;
-
-    if (monoBuffer.getNumSamples() < numSamples)
+    if (numSamples <= 0 || monoBuffer.getNumSamples() < numSamples)
         return;
 
     float* mono = monoBuffer.getWritePointer (0);
@@ -948,9 +855,7 @@ void MainComponent::audioDeviceIOCallbackWithContext (const float* const* inputC
     for (int ch = 0; ch < numInputChannels; ++ch)
     {
         const float* in = inputChannelData[ch];
-        if (in == nullptr)
-            continue;
-
+        if (in == nullptr) continue;
         juce::FloatVectorOperations::add (mono, in, numSamples);
         ++activeInputs;
     }
@@ -958,26 +863,20 @@ void MainComponent::audioDeviceIOCallbackWithContext (const float* const* inputC
     if (activeInputs > 0)
         juce::FloatVectorOperations::multiply (mono, 1.0f / (float) activeInputs, numSamples);
 
-    // Input meter (RMS)
     if (activeInputs > 0)
     {
         float sumSquares = 0.0f;
         for (int i = 0; i < numSamples; ++i)
             sumSquares += mono[i] * mono[i];
-
-        const float rms = std::sqrt (sumSquares / (float) numSamples);
-        inputLevel.store (rms * 3.0f);  // Scale for visibility
+        inputLevel.store (std::sqrt (sumSquares / (float) numSamples) * 3.0f);
     }
     else
     {
         inputLevel.store (0.0f);
     }
 
-    // Process audio with stereo decorrelation
     float outputSum = 0.0f;
     const float width = stereoWidth.load();
-
-    // Check loop state once per buffer (not per sample)
     const bool isRecording = loopRecorder.isRecording();
     const bool hasLoops = loopRecorder.hasAnyContent();
     const float liveLvl = liveLevel.load();
@@ -989,49 +888,35 @@ void MainComponent::audioDeviceIOCallbackWithContext (const float* const* inputC
         {
             float fftInput = 0.0f;
 
-            // Live input contribution
             if (activeInputs > 0)
             {
                 float liveSample = mono[i];
-
-                // Record to loop if recording
                 if (isRecording)
                     loopRecorder.recordSample (liveSample);
-
                 fftInput += liveSample * liveLvl;
             }
 
-            // Loop contribution
             if (hasLoops)
                 fftInput += loopRecorder.getLoopMix() * loopLvl;
 
-            // Process through FFT processors
-            // Optimization: when stereo width is 0, only process one FFT (halves CPU load)
             float outL, outR;
             if (width < 0.01f)
             {
-                // Mono mode - only use left processor
                 float processed = fftProcessorL.processSample (fftInput, false);
                 outL = outR = processed;
             }
             else
             {
-                // Stereo mode - process through both FFT processors
                 float processedL = fftProcessorL.processSample (fftInput, false);
                 float processedR = fftProcessorR.processSample (fftInput, false);
-
-                // Stereo width: 0 = mono (average), 1 = full stereo (independent)
                 float mid = (processedL + processedR) * 0.5f;
                 outL = mid + (processedL - mid) * width;
                 outR = mid + (processedR - mid) * width;
             }
 
-            // Process through effects chain
             effectsChain.processSample (outL, outR);
-
             outputSum += outL * outL + outR * outR;
 
-            // Output to channels
             if (numOutputChannels >= 1 && outputChannelData[0] != nullptr)
                 outputChannelData[0][i] += outL;
             if (numOutputChannels >= 2 && outputChannelData[1] != nullptr)
@@ -1039,58 +924,23 @@ void MainComponent::audioDeviceIOCallbackWithContext (const float* const* inputC
         }
     }
 
-    // Output meter (RMS) - divide by 2*numSamples since we summed L+R
-    const float outRms = std::sqrt (outputSum / (float) (numSamples * 2));
-    outputLevel.store (outRms * 3.0f);  // Scale for visibility
+    outputLevel.store (std::sqrt (outputSum / (float) (numSamples * 2)) * 3.0f);
 
-    // Test tone
-    if (testToneActive.load())
-    {
-        auto* dev = deviceManager.getCurrentAudioDevice();
-        const double sampleRate = (dev != nullptr ? dev->getCurrentSampleRate() : 48000.0);
-        const double phaseInc = juce::MathConstants<double>::twoPi * 440.0 / sampleRate;
-
-        for (int i = 0; i < numSamples; ++i)
-        {
-            if (--testSamplesRemaining <= 0)
-            {
-                testToneActive.store (false);
-                break;
-            }
-
-            const float s = std::sin (testPhase) * 0.2f;
-            testPhase += phaseInc;
-
-            for (int ch = 0; ch < numOutputChannels; ++ch)
-            {
-                float* out = outputChannelData[ch];
-                if (out != nullptr)
-                    out[i] += s;
-            }
-        }
-    }
-
-    // Calculate CPU load: time used vs time available
     const auto endTime = juce::Time::getHighResolutionTicks();
     const double elapsedSeconds = juce::Time::highResolutionTicksToSeconds (endTime - startTime);
     const double availableSeconds = (double) numSamples / currentSampleRate;
     const float load = (float) (elapsedSeconds / availableSeconds * 100.0);
-
-    // Smooth the CPU load reading (exponential moving average)
-    const float smoothing = 0.1f;
-    cpuLoad.store (cpuLoad.load() * (1.0f - smoothing) + load * smoothing);
+    cpuLoad.store (cpuLoad.load() * 0.9f + load * 0.1f);
 }
 
 void MainComponent::timerCallback()
 {
-    // Update loop button colors based on state
     for (int i = 0; i < 4; ++i)
     {
         juce::Colour buttonColour;
 
         if (loopRecorder.isRecording() && loopRecorder.getRecordingSlot() == i)
         {
-            // Recording - red (pulse effect by alternating shades)
             static int pulseCounter = 0;
             pulseCounter = (pulseCounter + 1) % 15;
             float pulse = 0.7f + 0.3f * std::sin (pulseCounter * 0.4f);
@@ -1098,12 +948,10 @@ void MainComponent::timerCallback()
         }
         else if (loopRecorder.isSlotActive (i))
         {
-            // Has content - green
             buttonColour = juce::Colours::green;
         }
         else
         {
-            // Empty - dark grey
             buttonColour = juce::Colours::darkgrey;
         }
 

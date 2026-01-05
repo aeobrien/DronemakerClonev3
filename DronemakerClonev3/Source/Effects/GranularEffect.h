@@ -7,6 +7,7 @@
 /**
  * Simplified granular delay with pitch shifting.
  * Creates clouds of grains from a delay buffer.
+ * Supports variable grain sizes and separate delay time control.
  */
 class GranularEffect : public EffectBase
 {
@@ -18,13 +19,23 @@ public:
     void reset() override;
     juce::String getName() const override { return "Granular"; }
 
-    void setGrainSize (float ms) { grainSizeMs = juce::jlimit (10.0f, 500.0f, ms); }
+    // Grain size (randomized between min and max)
+    void setGrainSizeMin (float ms) { grainSizeMinMs = juce::jlimit (10.0f, 2000.0f, ms); }
+    void setGrainSizeMax (float ms) { grainSizeMaxMs = juce::jlimit (10.0f, 2000.0f, ms); }
+
+    // Delay time (randomized between min and max) - how far back grains read from
+    void setDelayMin (float ms) { delayMinMs = juce::jlimit (10.0f, 4000.0f, ms); }
+    void setDelayMax (float ms) { delayMaxMs = juce::jlimit (10.0f, 4000.0f, ms); }
+
     void setPitch (float semitones) { pitch = juce::jlimit (-24.0f, 24.0f, semitones); updatePitchRatio(); }
     void setDensity (float d) { density = juce::jlimit (0.1f, 4.0f, d); }
     void setSpread (float s) { spread = juce::jlimit (0.0f, 1.0f, s); }
     void setDryWet (float dw) { dryWet = juce::jlimit (0.0f, 1.0f, dw); }
 
-    float getGrainSize() const { return grainSizeMs; }
+    float getGrainSizeMin() const { return grainSizeMinMs; }
+    float getGrainSizeMax() const { return grainSizeMaxMs; }
+    float getDelayMin() const { return delayMinMs; }
+    float getDelayMax() const { return delayMaxMs; }
     float getPitch() const { return pitch; }
     float getDensity() const { return density; }
     float getSpread() const { return spread; }
@@ -52,7 +63,11 @@ private:
     int grainSpawnCounter = 0;
     int grainSpawnInterval = 1000;
 
-    float grainSizeMs = 100.0f;
+    // Parameters
+    float grainSizeMinMs = 50.0f;
+    float grainSizeMaxMs = 200.0f;
+    float delayMinMs = 100.0f;
+    float delayMaxMs = 500.0f;
     float pitch = 0.0f;
     float pitchRatio = 1.0f;
     float density = 1.0f;

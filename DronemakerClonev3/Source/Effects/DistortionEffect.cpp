@@ -22,25 +22,38 @@ void DistortionEffect::reset()
 
 float DistortionEffect::processSoftClip (float sample)
 {
-    // Soft clipping using tanh
+    // Soft clipping using tanh - smooth, tube-like saturation
+    // Apply drive as gain before saturation
     sample *= drive;
+
+    // Tanh gives gradual saturation
     return std::tanh (sample);
 }
 
 float DistortionEffect::processHardClip (float sample)
 {
-    // Hard clipping
+    // Hard clipping - harsh, transistor-like distortion
+    // Apply drive as gain
     sample *= drive;
+
+    // Asymmetric hard clipping for more character
+    if (sample > 0.7f)
+        sample = 0.7f + (sample - 0.7f) * 0.1f;  // Compress positive peaks
+    if (sample < -0.7f)
+        sample = -0.7f + (sample + 0.7f) * 0.1f; // Compress negative peaks
+
+    // Final hard limit
     return juce::jlimit (-1.0f, 1.0f, sample);
 }
 
 float DistortionEffect::processWavefold (float sample)
 {
-    // Wavefolder
+    // Wavefolder - creates complex harmonics by folding the waveform
+    // Apply drive as gain
     sample *= drive;
 
-    // Fold the signal when it exceeds [-1, 1]
-    while (sample > 1.0f || sample < -1.0f)
+    // Multi-stage wavefolder for more complex harmonics
+    for (int stage = 0; stage < 4; ++stage)
     {
         if (sample > 1.0f)
             sample = 2.0f - sample;

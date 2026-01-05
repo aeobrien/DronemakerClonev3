@@ -26,11 +26,12 @@ float TapeEffect::processSaturation (float sample)
 {
     // Tape saturation using soft clipping with bias
     // Bias affects the asymmetry of the saturation curve
-    float biasOffset = (bias - 0.5f) * 0.2f;
+    float biasOffset = (bias - 0.5f) * 0.3f;
     sample += biasOffset;
 
     // Soft saturation using tanh with adjustable intensity
-    float intensity = 1.0f + saturation * 4.0f;
+    // Increased intensity range for more extreme saturation
+    float intensity = 1.0f + saturation * 8.0f;  // More extreme range
     sample = std::tanh (sample * intensity) / std::tanh (intensity);
 
     sample -= biasOffset * 0.5f;  // Partially compensate for bias DC offset
@@ -71,7 +72,7 @@ void TapeEffect::processSample (float& left, float& right)
     float wowMod = std::sin (wowPhase * juce::MathConstants<float>::twoPi);
     float flutterMod = std::sin (flutterPhase * juce::MathConstants<float>::twoPi);
 
-    // Advance LFO phases
+    // Advance LFO phases using separate rates
     wowPhase += static_cast<float> (wowRate / sampleRate);
     if (wowPhase >= 1.0f) wowPhase -= 1.0f;
 
@@ -79,9 +80,10 @@ void TapeEffect::processSample (float& left, float& right)
     if (flutterPhase >= 1.0f) flutterPhase -= 1.0f;
 
     // Calculate total delay modulation (in samples)
-    // Wow: up to ~10ms variation, Flutter: up to ~1ms variation
-    float wowDelaySamples = wowMod * wowDepth * static_cast<float> (sampleRate) * 0.01f;
-    float flutterDelaySamples = flutterMod * flutterDepth * static_cast<float> (sampleRate) * 0.001f;
+    // Wow: up to ~15ms variation at full depth
+    // Flutter: up to ~2ms variation at full depth
+    float wowDelaySamples = wowMod * wowDepth * static_cast<float> (sampleRate) * 0.015f;
+    float flutterDelaySamples = flutterMod * flutterDepth * static_cast<float> (sampleRate) * 0.002f;
     float totalDelay = 100.0f + wowDelaySamples + flutterDelaySamples;  // Base delay + modulation
 
     // Clamp delay to valid range
@@ -95,8 +97,8 @@ void TapeEffect::processSample (float& left, float& right)
     writePos = (writePos + 1) % delayLineSize;
 
     // Apply HF loss (simple one-pole LP filter)
-    // Higher hfLoss = more high frequency attenuation
-    float hfCutoff = 20000.0f - hfLoss * 16000.0f;  // 20kHz to 4kHz
+    // Higher hfLoss = more high frequency attenuation (down to 1kHz at full)
+    float hfCutoff = 20000.0f - hfLoss * 19000.0f;  // 20kHz to 1kHz
     float hfCoeff = 1.0f - std::exp (-2.0f * juce::MathConstants<float>::pi * hfCutoff / static_cast<float> (sampleRate));
 
     hfStateL += hfCoeff * (wetL - hfStateL);

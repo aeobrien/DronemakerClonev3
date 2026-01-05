@@ -21,7 +21,7 @@ public:
             true         // show buffer size
         );
         addAndMakeVisible (*deviceSelector);
-        setSize (500, 400);
+        setSize (500, 450);
     }
 
     void resized() override
@@ -42,23 +42,19 @@ public:
     ResourceMonitor (std::atomic<float>& cpuLoadRef) : cpuLoadPtr (&cpuLoadRef)
     {
         setSize (300, 150);
-        startTimerHz (4);  // Update 4 times per second
+        startTimerHz (4);
     }
 
     void paint (juce::Graphics& g) override
     {
         g.fillAll (juce::Colour (0xff1a1a2e));
-
         g.setColour (juce::Colours::white);
         g.setFont (14.0f);
 
         int y = 20;
         const int lineHeight = 28;
 
-        // Audio buffer load
         g.drawText ("Audio Load:", 20, y, 120, 20, juce::Justification::left);
-
-        // Draw load bar
         g.setColour (juce::Colours::darkgrey);
         g.fillRect (130, y + 2, 140, 16);
         g.setColour (audioLoad > 80 ? juce::Colours::red : (audioLoad > 50 ? juce::Colours::orange : juce::Colours::limegreen));
@@ -67,30 +63,22 @@ public:
         g.drawText (juce::String (audioLoad, 1) + " %", 130, y + 2, 140, 16, juce::Justification::centred);
 
         y += lineHeight;
-
-        // FFT buffer memory
         g.drawText ("FFT Buffers:", 20, y, 120, 20, juce::Justification::left);
         g.drawText (formatBytes (processMemory), 150, y, 120, 20, juce::Justification::left);
 
         y += lineHeight;
-
-        // FFT size info
         g.drawText ("FFT Size:", 20, y, 120, 20, juce::Justification::left);
         g.drawText ("32768 pts x2 (stereo)", 150, y, 140, 20, juce::Justification::left);
 
         y += lineHeight;
-
-        // History frames
         g.drawText ("History:", 20, y, 120, 20, juce::Justification::left);
         g.drawText ("56 frames (~10s)", 150, y, 120, 20, juce::Justification::left);
     }
 
     void timerCallback() override
     {
-        // Read CPU load from the audio callback
         if (cpuLoadPtr != nullptr)
             audioLoad = cpuLoadPtr->load();
-
         updateStats();
         repaint();
     }
@@ -104,17 +92,7 @@ private:
 
     void updateStats()
     {
-        // CPU usage based on audio load (we track this from the audio callback)
         cpuUsage = audioLoad;
-
-        // Estimated memory for our FFT buffers (x2 for stereo L/R processors):
-        // Per processor:
-        // - inputFifo: 32768 * 4 = 128 KB
-        // - outputFifo: 32768 * 4 = 128 KB
-        // - fftData: 32768 * 2 * 4 = 256 KB
-        // - magHistory: 56 * 16385 * 4 = ~3.6 MB
-        // - smoothedMag: 16385 * 4 = 64 KB
-        // Total per processor: ~4.2 MB, x2 = ~8.4 MB
         int64_t perProcessor = (32768 * 4) + (32768 * 4) + (32768 * 2 * 4) + (56 * 16385 * 4) + (16385 * 4);
         processMemory = perProcessor * 2;
     }
@@ -163,25 +141,20 @@ private:
     // Helper to update effect button colors based on current chain order
     void updateEffectButtonColors();
 
-    // Show parameter editor dialog for an effect
-    void showEffectEditor (int effectType);
+    // Update the effect parameter knobs for selected effect
+    void updateEffectParameterKnobs();
 
     // Audio
     juce::AudioDeviceManager deviceManager;
 
-    // Buttons
+    // Header buttons
     juce::TextButton settingsButton { "Settings" };
     juce::TextButton resourcesButton { "Resources" };
-    juce::TextButton testButton { "Test" };
-    juce::ComboBox bufferSizeCombo;
-    std::atomic<bool> testToneActive { false };
-    double testPhase = 0.0;
-    int testSamplesRemaining = 0;
 
     // Resource monitor
     std::unique_ptr<ResourceMonitor> resourceMonitor;
 
-    // ===== DRONE SECTION =====
+    // ===== DRONE & PITCH SECTION =====
     juce::Slider dryWetKnob;       juce::Label dryWetLabel;
     juce::Slider smoothingKnob;   juce::Label smoothingLabel;
     juce::Slider thresholdKnob;   juce::Label thresholdLabel;
@@ -192,22 +165,8 @@ private:
     juce::Slider stereoWidthKnob; juce::Label stereoWidthLabel;
     juce::ToggleButton peakToggle { "Peak Hold" };
     juce::ToggleButton phaseToggle { "Random Phase" };
-
-    // ===== PITCH SECTION =====
     juce::Slider pitchKnob;       juce::Label pitchLabel;
     juce::Slider octaveKnob;      juce::Label octaveLabel;
-
-    // ===== FILTER SECTION =====
-    juce::Slider highPassKnob;       juce::Label highPassLabel;
-    juce::Slider highPassSlopeKnob;  juce::Label highPassSlopeLabel;
-    juce::Slider lowPassKnob;        juce::Label lowPassLabel;
-    juce::Slider lowPassSlopeKnob;   juce::Label lowPassSlopeLabel;
-
-    // Harmonic filter
-    juce::ToggleButton harmonicToggle { "Harmonic" };
-    juce::Slider harmonicIntensityKnob;  juce::Label harmonicIntensityLabel;
-    juce::ComboBox rootNoteCombo;
-    juce::ComboBox scaleTypeCombo;
 
     // ===== LOOPS SECTION =====
     LoopRecorder loopRecorder;
@@ -220,9 +179,13 @@ private:
 
     // Per-loop controls
     std::array<juce::Slider, 4> loopVolumeSliders;
+    std::array<juce::Label, 4> loopVolumeLabels;
     std::array<juce::Slider, 4> loopHPSliders;
+    std::array<juce::Label, 4> loopHPLabels;
     std::array<juce::Slider, 4> loopLPSliders;
+    std::array<juce::Label, 4> loopLPLabels;
     std::array<juce::ComboBox, 4> loopPitchCombos;
+    std::array<juce::Label, 4> loopPitchLabels;
 
     // Metering
     std::atomic<float> inputLevel { 0.0f };
@@ -238,17 +201,27 @@ private:
     // STFT processors (one per channel for stereo decorrelation)
     FFTProcessor fftProcessorL;
     FFTProcessor fftProcessorR;
-    std::atomic<float> stereoWidth { 1.0f };  // 0 = mono, 1 = full stereo
+    std::atomic<float> stereoWidth { 1.0f };
 
     // ===== EFFECTS CHAIN =====
     EffectsChain effectsChain;
 
     // Effects chain UI
     std::array<juce::TextButton, 6> effectButtons;
-    std::array<juce::ToggleButton, 6> effectEnableToggles;
     juce::TextButton moveLeftButton { "<" };
     juce::TextButton moveRightButton { ">" };
-    int selectedEffectSlot = -1;  // Currently selected slot for moving
+    int selectedEffectSlot = 0;  // Currently selected slot (0 = Filter by default)
+
+    // Effect parameter knobs (displayed in bottom row)
+    static constexpr int maxParamKnobs = 10;
+    std::array<juce::Slider, maxParamKnobs> paramKnobs;
+    std::array<juce::Label, maxParamKnobs> paramLabels;
+    std::array<juce::ComboBox, 4> paramCombos;
+    std::array<juce::Label, 4> paramComboLabels;
+    std::array<juce::ToggleButton, 4> paramToggles;
+    int numActiveKnobs = 0;
+    int numActiveCombos = 0;
+    int numActiveToggles = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };

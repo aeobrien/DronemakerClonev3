@@ -70,14 +70,24 @@ void GranularEffect::spawnGrain()
     {
         if (! grain.active)
         {
-            // Calculate grain parameters
+            // Calculate grain size (random between min and max)
+            float grainSizeMs = grainSizeMinMs + random.nextFloat() * (grainSizeMaxMs - grainSizeMinMs);
             int grainLengthSamples = static_cast<int> (grainSizeMs * 0.001 * sampleRate);
 
-            // Start position: random offset from current write position based on spread
-            int maxOffset = static_cast<int> (bufferSize * spread * 0.5);
-            int offset = maxOffset > 0 ? random.nextInt (maxOffset * 2) - maxOffset : 0;
+            // Calculate delay time (random between min and max)
+            float delayMs = delayMinMs + random.nextFloat() * (delayMaxMs - delayMinMs);
+            int delaySamples = static_cast<int> (delayMs * 0.001 * sampleRate);
 
-            grain.readPosition = static_cast<double> (writePos - grainLengthSamples - offset);
+            // Apply spread as additional random offset
+            int spreadOffset = static_cast<int> (spread * delaySamples * 0.5f);
+            if (spreadOffset > 0)
+                delaySamples += random.nextInt (spreadOffset * 2) - spreadOffset;
+
+            // Clamp to valid buffer range
+            delaySamples = juce::jlimit (grainLengthSamples, bufferSize - 1, delaySamples);
+
+            // Start reading from the delayed position
+            grain.readPosition = static_cast<double> (writePos - delaySamples);
             if (grain.readPosition < 0)
                 grain.readPosition += bufferSize;
 
@@ -106,8 +116,10 @@ void GranularEffect::processSample (float& left, float& right)
     writePos = (writePos + 1) % bufferSize;
 
     // Spawn new grains based on density
-    int grainLengthSamples = static_cast<int> (grainSizeMs * 0.001 * sampleRate);
-    grainSpawnInterval = static_cast<int> (grainLengthSamples / density);
+    // Use average grain size for spawn interval calculation
+    float avgGrainSizeMs = (grainSizeMinMs + grainSizeMaxMs) * 0.5f;
+    int avgGrainLengthSamples = static_cast<int> (avgGrainSizeMs * 0.001 * sampleRate);
+    grainSpawnInterval = static_cast<int> (avgGrainLengthSamples / density);
 
     grainSpawnCounter++;
     if (grainSpawnCounter >= grainSpawnInterval)
