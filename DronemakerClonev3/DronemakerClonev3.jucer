@@ -8,10 +8,12 @@
       <FILE id="O8Vtrt" name="MainComponent.h" compile="0" resource="0" file="Source/MainComponent.h"/>
       <FILE id="djprka" name="MainComponent.cpp" compile="1" resource="0"
             file="Source/MainComponent.cpp"/>
-      <FILE id="fftprH" name="FFTProcessor.h" compile="0" resource="0"
-            file="Source/FFTProcessor.h"/>
+      <FILE id="fftprH" name="FFTProcessor.h" compile="0" resource="0" file="Source/FFTProcessor.h"/>
       <FILE id="fftprC" name="FFTProcessor.cpp" compile="1" resource="0"
             file="Source/FFTProcessor.cpp"/>
+      <FILE id="looprcH" name="LoopRecorder.h" compile="0" resource="0" file="Source/LoopRecorder.h"/>
+      <FILE id="looprcC" name="LoopRecorder.cpp" compile="1" resource="0"
+            file="Source/LoopRecorder.cpp"/>
     </GROUP>
   </MAINGROUP>
   <MODULES>
@@ -32,7 +34,7 @@
   </MODULES>
   <JUCEOPTIONS JUCE_STRICT_REFCOUNTEDPOINTER="1"/>
   <EXPORTFORMATS>
-    <XCODE_MAC targetFolder="Builds/MacOSX">
+    <XCODE_MAC targetFolder="Builds/MacOSX" microphonePermissionNeeded="1">
       <CONFIGURATIONS>
         <CONFIGURATION isDebug="1" name="Debug" targetName="DronemakerClonev3"/>
         <CONFIGURATION isDebug="0" name="Release" targetName="DronemakerClonev3"/>

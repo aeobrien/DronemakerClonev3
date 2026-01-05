@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "FFTProcessor.h"
+#include "LoopRecorder.h"
 
 //==============================================================================
 // Settings dialog for audio device configuration
@@ -37,7 +38,7 @@ private:
 class ResourceMonitor : public juce::Component, public juce::Timer
 {
 public:
-    ResourceMonitor()
+    ResourceMonitor (std::atomic<float>& cpuLoadRef) : cpuLoadPtr (&cpuLoadRef)
     {
         setSize (300, 150);
         startTimerHz (4);  // Update 4 times per second
@@ -85,13 +86,16 @@ public:
 
     void timerCallback() override
     {
+        // Read CPU load from the audio callback
+        if (cpuLoadPtr != nullptr)
+            audioLoad = cpuLoadPtr->load();
+
         updateStats();
         repaint();
     }
 
-    void setAudioLoad (float load) { audioLoad = load; }
-
 private:
+    std::atomic<float>* cpuLoadPtr = nullptr;
     float cpuUsage = 0.0f;
     int64_t memoryUsed = 0;
     int64_t processMemory = 0;
@@ -174,6 +178,7 @@ private:
     juce::Slider smoothingKnob;   juce::Label smoothingLabel;
     juce::Slider thresholdKnob;   juce::Label thresholdLabel;
     juce::Slider tiltKnob;        juce::Label tiltLabel;
+    juce::Slider delayKnob;       juce::Label delayLabel;
     juce::Slider decayKnob;       juce::Label decayLabel;
     juce::Slider historyKnob;     juce::Label historyLabel;
     juce::Slider stereoWidthKnob; juce::Label stereoWidthLabel;
@@ -196,10 +201,21 @@ private:
     juce::ComboBox rootNoteCombo;
     juce::ComboBox scaleTypeCombo;
 
+    // ===== LOOPS SECTION =====
+    LoopRecorder loopRecorder;
+    juce::Slider liveLevelKnob;   juce::Label liveLevelLabel;
+    juce::Slider loopLevelKnob;   juce::Label loopLevelLabel;
+    std::array<juce::TextButton, 4> loopButtons;
+    juce::TextButton clearLoopsButton { "Clear All" };
+    std::atomic<float> liveLevel { 1.0f };
+    std::atomic<float> loopLevel { 0.5f };
+
     // Metering
     std::atomic<float> inputLevel { 0.0f };
     std::atomic<float> outputLevel { 0.0f };
     std::atomic<float> cpuLoad { 0.0f };
+    double currentSampleRate = 44100.0;
+    int currentBufferSize = 512;
     void timerCallback() override;
 
     // Scratch mono buffer

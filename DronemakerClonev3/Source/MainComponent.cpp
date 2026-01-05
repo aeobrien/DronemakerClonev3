@@ -31,7 +31,7 @@ MainComponent::MainComponent()
 
     // Resources button
     resourcesButton.onClick = [this] {
-        auto* monitor = new ResourceMonitor();
+        auto* monitor = new ResourceMonitor (cpuLoad);
         juce::DialogWindow::LaunchOptions options;
         options.content.setOwned (monitor);
         options.dialogTitle = "System Resources";
@@ -80,6 +80,13 @@ MainComponent::MainComponent()
         float v = (float) tiltKnob.getValue();
         fftProcessorL.setSpectralTilt (v);
         fftProcessorR.setSpectralTilt (v);
+    };
+
+    setupKnob (delayKnob, delayLabel, "Delay", 0.0, 1.0, 0.01, 0.0);
+    delayKnob.onValueChange = [this] {
+        float v = (float) delayKnob.getValue();
+        fftProcessorL.setDroneDelay (v);
+        fftProcessorR.setDroneDelay (v);
     };
 
     setupKnob (decayKnob, decayLabel, "Decay", 0.99, 1.0, 0.0001, 1.0);
@@ -209,8 +216,49 @@ MainComponent::MainComponent()
     };
     addAndMakeVisible (scaleTypeCombo);
 
+    // ===== LOOPS SECTION =====
+    setupKnob (liveLevelKnob, liveLevelLabel, "Live", 0.0, 1.0, 0.01, 1.0);
+    liveLevelKnob.onValueChange = [this] {
+        liveLevel.store ((float) liveLevelKnob.getValue());
+    };
+
+    setupKnob (loopLevelKnob, loopLevelLabel, "Loop", 0.0, 1.0, 0.01, 0.5);
+    loopLevelKnob.onValueChange = [this] {
+        loopLevel.store ((float) loopLevelKnob.getValue());
+    };
+
+    // Loop slot buttons
+    for (int i = 0; i < 4; ++i)
+    {
+        loopButtons[i].setButtonText ("L" + juce::String (i + 1));
+        loopButtons[i].setColour (juce::TextButton::buttonColourId, juce::Colours::darkgrey);
+        loopButtons[i].onClick = [this, i] {
+            if (loopRecorder.isRecording() && loopRecorder.getRecordingSlot() == i)
+            {
+                // Stop recording
+                loopRecorder.stopRecording();
+            }
+            else if (loopRecorder.isSlotActive (i))
+            {
+                // Slot has content - clear it on click (could also be right-click only)
+                loopRecorder.clearSlot (i);
+            }
+            else
+            {
+                // Start recording to this slot
+                loopRecorder.startRecording (i);
+            }
+        };
+        addAndMakeVisible (loopButtons[i]);
+    }
+
+    clearLoopsButton.onClick = [this] {
+        loopRecorder.clearAll();
+    };
+    addAndMakeVisible (clearLoopsButton);
+
     startTimerHz (30);
-    setSize (750, 520);
+    setSize (850, 580);
 }
 
 MainComponent::~MainComponent()
@@ -256,7 +304,7 @@ void MainComponent::paint (juce::Graphics& g)
     auto bounds = getLocalBounds().reduced (10);
     bounds.removeFromTop (55); // Header area with meters
 
-    const int sectionWidth = (bounds.getWidth() - 20) / 3;
+    const int sectionWidth = (bounds.getWidth() - 30) / 4;
 
     // Drone section
     drawSection (bounds.removeFromLeft (sectionWidth).reduced (5), "DRONE");
@@ -267,7 +315,11 @@ void MainComponent::paint (juce::Graphics& g)
     bounds.removeFromLeft (10);
 
     // Filter section
-    drawSection (bounds.reduced (5), "FILTERS");
+    drawSection (bounds.removeFromLeft (sectionWidth).reduced (5), "FILTERS");
+    bounds.removeFromLeft (10);
+
+    // Loops section
+    drawSection (bounds.reduced (5), "LOOPS");
 
     // Input level meter
     auto meterBounds = getLocalBounds().reduced (10);
@@ -309,7 +361,7 @@ void MainComponent::resized()
 
     bounds.removeFromTop (10);
 
-    const int sectionWidth = (bounds.getWidth() - 20) / 3;
+    const int sectionWidth = (bounds.getWidth() - 30) / 4;
     const int knobSize = 60;
     const int labelHeight = 16;
 
@@ -330,6 +382,7 @@ void MainComponent::resized()
     layoutKnobWithLabel (tiltKnob, tiltLabel, droneRow1);
 
     auto droneRow2 = droneArea.removeFromTop (knobSize + labelHeight + 5);
+    layoutKnobWithLabel (delayKnob, delayLabel, droneRow2);
     layoutKnobWithLabel (decayKnob, decayLabel, droneRow2);
     layoutKnobWithLabel (historyKnob, historyLabel, droneRow2);
     layoutKnobWithLabel (stereoWidthKnob, stereoWidthLabel, droneRow2);
@@ -352,22 +405,22 @@ void MainComponent::resized()
     bounds.removeFromLeft (10);
 
     // ===== FILTER SECTION =====
-    auto filterArea = bounds.reduced (5);
+    auto filterArea = bounds.removeFromLeft (sectionWidth).reduced (5);
     filterArea.removeFromTop (28);
 
     // HP and LP row
     auto filterRow1 = filterArea.removeFromTop (knobSize + labelHeight + 5);
     layoutKnobWithLabel (highPassKnob, highPassLabel, filterRow1);
     layoutKnobWithLabel (highPassSlopeKnob, highPassSlopeLabel, filterRow1);
-    filterRow1.removeFromLeft (8);
-    layoutKnobWithLabel (lowPassKnob, lowPassLabel, filterRow1);
-    layoutKnobWithLabel (lowPassSlopeKnob, lowPassSlopeLabel, filterRow1);
+
+    auto filterRow2 = filterArea.removeFromTop (knobSize + labelHeight + 5);
+    layoutKnobWithLabel (lowPassKnob, lowPassLabel, filterRow2);
+    layoutKnobWithLabel (lowPassSlopeKnob, lowPassSlopeLabel, filterRow2);
 
     filterArea.removeFromTop (5);
 
     // Harmonic filter row
-    auto harmRow1 = filterArea.removeFromTop (20);
-    harmonicToggle.setBounds (harmRow1.removeFromLeft (100));
+    harmonicToggle.setBounds (filterArea.removeFromTop (20).removeFromLeft (100));
 
     auto harmRow2 = filterArea.removeFromTop (knobSize + labelHeight + 5);
     layoutKnobWithLabel (harmonicIntensityKnob, harmonicIntensityLabel, harmRow2);
@@ -377,6 +430,30 @@ void MainComponent::resized()
     rootNoteCombo.setBounds (comboRow.removeFromLeft (55));
     comboRow.removeFromLeft (5);
     scaleTypeCombo.setBounds (comboRow.removeFromLeft (120));
+
+    bounds.removeFromLeft (10);
+
+    // ===== LOOPS SECTION =====
+    auto loopsArea = bounds.reduced (5);
+    loopsArea.removeFromTop (28);
+
+    auto loopsRow1 = loopsArea.removeFromTop (knobSize + labelHeight + 5);
+    layoutKnobWithLabel (liveLevelKnob, liveLevelLabel, loopsRow1);
+    layoutKnobWithLabel (loopLevelKnob, loopLevelLabel, loopsRow1);
+
+    loopsArea.removeFromTop (10);
+
+    // Loop buttons row
+    auto buttonRow = loopsArea.removeFromTop (30);
+    const int buttonWidth = 40;
+    for (int i = 0; i < 4; ++i)
+    {
+        loopButtons[i].setBounds (buttonRow.removeFromLeft (buttonWidth));
+        buttonRow.removeFromLeft (5);
+    }
+
+    loopsArea.removeFromTop (10);
+    clearLoopsButton.setBounds (loopsArea.removeFromTop (25).removeFromLeft (80));
 }
 
 void MainComponent::audioDeviceAboutToStart (juce::AudioIODevice* device)
@@ -394,11 +471,17 @@ void MainComponent::audioDeviceAboutToStart (juce::AudioIODevice* device)
     setup.inputChannels.setBit (0);
     deviceManager.setAudioDeviceSetup (setup, true);
 
-    float sr = static_cast<float>(device->getCurrentSampleRate());
+    currentSampleRate = device->getCurrentSampleRate();
+    currentBufferSize = blockSize;
+
+    float sr = static_cast<float>(currentSampleRate);
     fftProcessorL.setSampleRate (sr);
     fftProcessorL.reset();
     fftProcessorR.setSampleRate (sr);
     fftProcessorR.reset();
+
+    // Initialize loop recorder
+    loopRecorder.prepareToPlay (currentSampleRate, blockSize);
 }
 
 void MainComponent::audioDeviceStopped()
@@ -412,6 +495,9 @@ void MainComponent::audioDeviceIOCallbackWithContext (const float* const* inputC
                                                      int numSamples,
                                                      const juce::AudioIODeviceCallbackContext&)
 {
+    // Start timing for CPU load measurement
+    const auto startTime = juce::Time::getHighResolutionTicks();
+
     for (int ch = 0; ch < numOutputChannels; ++ch)
         if (auto* out = outputChannelData[ch])
             juce::FloatVectorOperations::clear (out, numSamples);
@@ -458,13 +544,37 @@ void MainComponent::audioDeviceIOCallbackWithContext (const float* const* inputC
     float outputSum = 0.0f;
     const float width = stereoWidth.load();
 
-    if (activeInputs > 0)
+    // Check loop state once per buffer (not per sample)
+    const bool isRecording = loopRecorder.isRecording();
+    const bool hasLoops = loopRecorder.hasAnyContent();
+    const float liveLvl = liveLevel.load();
+    const float loopLvl = loopLevel.load();
+
+    if (activeInputs > 0 || hasLoops)
     {
         for (int i = 0; i < numSamples; ++i)
         {
+            float fftInput = 0.0f;
+
+            // Live input contribution
+            if (activeInputs > 0)
+            {
+                float liveSample = mono[i];
+
+                // Record to loop if recording
+                if (isRecording)
+                    loopRecorder.recordSample (liveSample);
+
+                fftInput += liveSample * liveLvl;
+            }
+
+            // Loop contribution
+            if (hasLoops)
+                fftInput += loopRecorder.getLoopMix() * loopLvl;
+
             // Process through both FFT processors (each has its own random phase generator)
-            float processedL = fftProcessorL.processSample (mono[i], false);
-            float processedR = fftProcessorR.processSample (mono[i], false);
+            float processedL = fftProcessorL.processSample (fftInput, false);
+            float processedR = fftProcessorR.processSample (fftInput, false);
 
             // Stereo width: 0 = mono (average), 1 = full stereo (independent)
             float mid = (processedL + processedR) * 0.5f;
@@ -511,9 +621,46 @@ void MainComponent::audioDeviceIOCallbackWithContext (const float* const* inputC
             }
         }
     }
+
+    // Calculate CPU load: time used vs time available
+    const auto endTime = juce::Time::getHighResolutionTicks();
+    const double elapsedSeconds = juce::Time::highResolutionTicksToSeconds (endTime - startTime);
+    const double availableSeconds = (double) numSamples / currentSampleRate;
+    const float load = (float) (elapsedSeconds / availableSeconds * 100.0);
+
+    // Smooth the CPU load reading (exponential moving average)
+    const float smoothing = 0.1f;
+    cpuLoad.store (cpuLoad.load() * (1.0f - smoothing) + load * smoothing);
 }
 
 void MainComponent::timerCallback()
 {
+    // Update loop button colors based on state
+    for (int i = 0; i < 4; ++i)
+    {
+        juce::Colour buttonColour;
+
+        if (loopRecorder.isRecording() && loopRecorder.getRecordingSlot() == i)
+        {
+            // Recording - red (pulse effect by alternating shades)
+            static int pulseCounter = 0;
+            pulseCounter = (pulseCounter + 1) % 15;
+            float pulse = 0.7f + 0.3f * std::sin (pulseCounter * 0.4f);
+            buttonColour = juce::Colour::fromFloatRGBA (pulse, 0.1f, 0.1f, 1.0f);
+        }
+        else if (loopRecorder.isSlotActive (i))
+        {
+            // Has content - green
+            buttonColour = juce::Colours::green;
+        }
+        else
+        {
+            // Empty - dark grey
+            buttonColour = juce::Colours::darkgrey;
+        }
+
+        loopButtons[i].setColour (juce::TextButton::buttonColourId, buttonColour);
+    }
+
     repaint();
 }

@@ -247,7 +247,10 @@ void FFTProcessor::processSpectrum(float* data, int numBinsParam)
         float newMag = std::abs(cdata[i]);
 
         // Blend between old (sustained drone) and new (current input)
-        float interpMag = oldMag * (1.0f - interpFactor) + newMag * interpFactor;
+        // droneDelay controls how much we favor pure-delayed vs blended output
+        float blendedMag = oldMag * (1.0f - interpFactor) + newMag * interpFactor;
+        float pureMag = oldMag;  // Pure delayed signal (true DroneMaker style)
+        float interpMag = blendedMag * (1.0f - droneDelay) + pureMag * droneDelay;
 
         // -------- Exponential Moving Average smoothing --------
         smoothedMag[i] = smoothedMag[i] * (1.0f - smoothingFactor) + interpMag * smoothingFactor;

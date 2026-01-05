@@ -20,6 +20,7 @@ public:
 
     // Parameter setters for UI control
     void setInterpFactor(float f) { interpFactor = juce::jlimit(0.0f, 1.0f, f); }
+    void setDroneDelay(float d) { droneDelay = juce::jlimit(0.0f, 1.0f, d); }
     void setSmoothingFactor(float f) { smoothingFactor = juce::jlimit(0.01f, 0.5f, f); }
     void setThreshold(float t) { threshold = juce::jlimit(0.0f, 0.1f, t); }
     void setSpectralTilt(float dbPerOctave) { spectralTilt = juce::jlimit(-6.0f, 6.0f, dbPerOctave); }
@@ -89,6 +90,9 @@ private:
 
     // Interpolation factor: 0.0 = fully old (droney), 1.0 = fully new (dry)
     float interpFactor = 0.2f;
+
+    // Drone delay: 0.0 = blend mode (responsive), 1.0 = pure delay mode (true DroneMaker)
+    float droneDelay = 0.0f;
 
     // Sample rate (needed for future calculations)
     float sampleRate = 44100.0f;
