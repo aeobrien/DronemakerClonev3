@@ -14,6 +14,23 @@
       <FILE id="looprcH" name="LoopRecorder.h" compile="0" resource="0" file="Source/LoopRecorder.h"/>
       <FILE id="looprcC" name="LoopRecorder.cpp" compile="1" resource="0"
             file="Source/LoopRecorder.cpp"/>
+      <GROUP id="{EF5CD0A7-2D6C-D107-A62D-92F5AC48C689}" name="Effects">
+        <FILE id="efxBase" name="EffectBase.h" compile="0" resource="0" file="Source/Effects/EffectBase.h"/>
+        <FILE id="efxChainH" name="EffectsChain.h" compile="0" resource="0" file="Source/Effects/EffectsChain.h"/>
+        <FILE id="efxChainC" name="EffectsChain.cpp" compile="1" resource="0" file="Source/Effects/EffectsChain.cpp"/>
+        <FILE id="efxFilterH" name="FilterEffect.h" compile="0" resource="0" file="Source/Effects/FilterEffect.h"/>
+        <FILE id="efxFilterC" name="FilterEffect.cpp" compile="1" resource="0" file="Source/Effects/FilterEffect.cpp"/>
+        <FILE id="efxDelayH" name="DelayEffect.h" compile="0" resource="0" file="Source/Effects/DelayEffect.h"/>
+        <FILE id="efxDelayC" name="DelayEffect.cpp" compile="1" resource="0" file="Source/Effects/DelayEffect.cpp"/>
+        <FILE id="efxGranH" name="GranularEffect.h" compile="0" resource="0" file="Source/Effects/GranularEffect.h"/>
+        <FILE id="efxGranC" name="GranularEffect.cpp" compile="1" resource="0" file="Source/Effects/GranularEffect.cpp"/>
+        <FILE id="efxTremH" name="TremoloEffect.h" compile="0" resource="0" file="Source/Effects/TremoloEffect.h"/>
+        <FILE id="efxTremC" name="TremoloEffect.cpp" compile="1" resource="0" file="Source/Effects/TremoloEffect.cpp"/>
+        <FILE id="efxDistH" name="DistortionEffect.h" compile="0" resource="0" file="Source/Effects/DistortionEffect.h"/>
+        <FILE id="efxDistC" name="DistortionEffect.cpp" compile="1" resource="0" file="Source/Effects/DistortionEffect.cpp"/>
+        <FILE id="efxTapeH" name="TapeEffect.h" compile="0" resource="0" file="Source/Effects/TapeEffect.h"/>
+        <FILE id="efxTapeC" name="TapeEffect.cpp" compile="1" resource="0" file="Source/Effects/TapeEffect.cpp"/>
+      </GROUP>
     </GROUP>
   </MAINGROUP>
   <MODULES>

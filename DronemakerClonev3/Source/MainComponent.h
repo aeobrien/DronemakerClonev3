@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 #include "FFTProcessor.h"
 #include "LoopRecorder.h"
+#include "Effects/EffectsChain.h"
 
 //==============================================================================
 // Settings dialog for audio device configuration
@@ -159,6 +160,12 @@ private:
                     double min, double max, double step, double initial,
                     const juce::String& suffix = "");
 
+    // Helper to update effect button colors based on current chain order
+    void updateEffectButtonColors();
+
+    // Show parameter editor dialog for an effect
+    void showEffectEditor (int effectType);
+
     // Audio
     juce::AudioDeviceManager deviceManager;
 
@@ -232,6 +239,16 @@ private:
     FFTProcessor fftProcessorL;
     FFTProcessor fftProcessorR;
     std::atomic<float> stereoWidth { 1.0f };  // 0 = mono, 1 = full stereo
+
+    // ===== EFFECTS CHAIN =====
+    EffectsChain effectsChain;
+
+    // Effects chain UI
+    std::array<juce::TextButton, 6> effectButtons;
+    std::array<juce::ToggleButton, 6> effectEnableToggles;
+    juce::TextButton moveLeftButton { "<" };
+    juce::TextButton moveRightButton { ">" };
+    int selectedEffectSlot = -1;  // Currently selected slot for moving
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };

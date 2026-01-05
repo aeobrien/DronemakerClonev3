@@ -1,4 +1,10 @@
 #include "MainComponent.h"
+#include "Effects/FilterEffect.h"
+#include "Effects/DelayEffect.h"
+#include "Effects/GranularEffect.h"
+#include "Effects/TremoloEffect.h"
+#include "Effects/DistortionEffect.h"
+#include "Effects/TapeEffect.h"
 
 MainComponent::MainComponent()
 {
@@ -319,8 +325,76 @@ MainComponent::MainComponent()
     };
     addAndMakeVisible (clearLoopsButton);
 
+    // ===== EFFECTS CHAIN SECTION =====
+    const char* effectNames[] = { "Filter", "Delay", "Granular", "Tremolo", "Distort", "Tape" };
+
+    for (int i = 0; i < 6; ++i)
+    {
+        effectButtons[i].setButtonText (effectNames[i]);
+        effectButtons[i].setColour (juce::TextButton::buttonColourId, juce::Colours::darkgrey);
+        effectButtons[i].onClick = [this, i] {
+            static juce::int64 lastClickTime = 0;
+            static int lastClickSlot = -1;
+
+            juce::int64 now = juce::Time::currentTimeMillis();
+
+            // Double-click detection (within 400ms on same slot)
+            if (lastClickSlot == i && (now - lastClickTime) < 400)
+            {
+                // Double-click: open editor
+                auto order = effectsChain.getOrder();
+                showEffectEditor (order[i]);
+                lastClickTime = 0;
+                lastClickSlot = -1;
+            }
+            else
+            {
+                // Single click: toggle selection for reordering
+                if (selectedEffectSlot == i)
+                    selectedEffectSlot = -1;  // Deselect
+                else
+                    selectedEffectSlot = i;
+                updateEffectButtonColors();
+                lastClickTime = now;
+                lastClickSlot = i;
+            }
+        };
+        addAndMakeVisible (effectButtons[i]);
+
+        effectEnableToggles[i].setToggleState (true, juce::dontSendNotification);
+        effectEnableToggles[i].onClick = [this, i] {
+            auto order = effectsChain.getOrder();
+            int effectType = order[i];
+            auto* effect = effectsChain.getEffect (effectType);
+            if (effect)
+                effect->setEnabled (effectEnableToggles[i].getToggleState());
+            updateEffectButtonColors();
+        };
+        addAndMakeVisible (effectEnableToggles[i]);
+    }
+
+    moveLeftButton.onClick = [this] {
+        if (selectedEffectSlot > 0)
+        {
+            effectsChain.swapPositions (selectedEffectSlot, selectedEffectSlot - 1);
+            selectedEffectSlot--;
+            updateEffectButtonColors();
+        }
+    };
+    addAndMakeVisible (moveLeftButton);
+
+    moveRightButton.onClick = [this] {
+        if (selectedEffectSlot >= 0 && selectedEffectSlot < 5)
+        {
+            effectsChain.swapPositions (selectedEffectSlot, selectedEffectSlot + 1);
+            selectedEffectSlot++;
+            updateEffectButtonColors();
+        }
+    };
+    addAndMakeVisible (moveRightButton);
+
     startTimerHz (30);
-    setSize (1000, 620);
+    setSize (1000, 720);  // Increased height for effects section
 }
 
 MainComponent::~MainComponent()
@@ -347,6 +421,250 @@ void MainComponent::setupKnob (juce::Slider& knob, juce::Label& label, const juc
     addAndMakeVisible (label);
 }
 
+void MainComponent::updateEffectButtonColors()
+{
+    const char* effectNames[] = { "Filter", "Delay", "Granular", "Tremolo", "Distort", "Tape" };
+    auto order = effectsChain.getOrder();
+
+    for (int i = 0; i < 6; ++i)
+    {
+        int effectType = order[i];
+        effectButtons[i].setButtonText (effectNames[effectType]);
+
+        auto* effect = effectsChain.getEffect (effectType);
+        bool enabled = effect ? effect->isEnabled() : true;
+        effectEnableToggles[i].setToggleState (enabled, juce::dontSendNotification);
+
+        if (i == selectedEffectSlot)
+            effectButtons[i].setColour (juce::TextButton::buttonColourId, juce::Colours::dodgerblue);
+        else if (enabled)
+            effectButtons[i].setColour (juce::TextButton::buttonColourId, juce::Colours::green.darker());
+        else
+            effectButtons[i].setColour (juce::TextButton::buttonColourId, juce::Colours::darkgrey);
+    }
+}
+
+//==============================================================================
+// Effect Editor Dialog Component
+class EffectEditorContent : public juce::Component
+{
+public:
+    EffectEditorContent (EffectsChain& chain, int effectType)
+        : effectsChain (chain), type (effectType)
+    {
+        setSize (350, 300);
+        buildControls();
+    }
+
+    void resized() override
+    {
+        auto bounds = getLocalBounds().reduced (10);
+        bounds.removeFromTop (10);
+
+        for (auto& slider : sliders)
+        {
+            auto row = bounds.removeFromTop (50);
+            labels[&slider - sliders.data()]->setBounds (row.removeFromTop (16));
+            slider->setBounds (row.reduced (0, 2));
+        }
+
+        for (auto& combo : combos)
+        {
+            auto row = bounds.removeFromTop (40);
+            comboLabels[&combo - combos.data()]->setBounds (row.removeFromTop (16));
+            combo->setBounds (row.removeFromTop (22).reduced (0, 2));
+        }
+
+        for (auto& toggle : toggles)
+        {
+            bounds.removeFromTop (5);
+            toggle->setBounds (bounds.removeFromTop (22));
+        }
+    }
+
+private:
+    EffectsChain& effectsChain;
+    int type;
+
+    std::vector<std::unique_ptr<juce::Slider>> sliders;
+    std::vector<std::unique_ptr<juce::Label>> labels;
+    std::vector<std::unique_ptr<juce::ComboBox>> combos;
+    std::vector<std::unique_ptr<juce::Label>> comboLabels;
+    std::vector<std::unique_ptr<juce::ToggleButton>> toggles;
+
+    void addSlider (const juce::String& name, double min, double max, double step, double value,
+                    std::function<void(float)> onChange, const juce::String& suffix = "")
+    {
+        auto label = std::make_unique<juce::Label>();
+        label->setText (name, juce::dontSendNotification);
+        label->setFont (juce::Font (12.0f));
+        addAndMakeVisible (*label);
+        labels.push_back (std::move (label));
+
+        auto slider = std::make_unique<juce::Slider>();
+        slider->setSliderStyle (juce::Slider::LinearHorizontal);
+        slider->setTextBoxStyle (juce::Slider::TextBoxRight, false, 60, 20);
+        slider->setRange (min, max, step);
+        slider->setValue (value);
+        if (suffix.isNotEmpty())
+            slider->setTextValueSuffix (suffix);
+        slider->onValueChange = [slider = slider.get(), onChange] {
+            onChange (static_cast<float> (slider->getValue()));
+        };
+        addAndMakeVisible (*slider);
+        sliders.push_back (std::move (slider));
+    }
+
+    void addCombo (const juce::String& name, juce::StringArray items, int selectedIdx,
+                   std::function<void(int)> onChange)
+    {
+        auto label = std::make_unique<juce::Label>();
+        label->setText (name, juce::dontSendNotification);
+        label->setFont (juce::Font (12.0f));
+        addAndMakeVisible (*label);
+        comboLabels.push_back (std::move (label));
+
+        auto combo = std::make_unique<juce::ComboBox>();
+        for (int i = 0; i < items.size(); ++i)
+            combo->addItem (items[i], i + 1);
+        combo->setSelectedId (selectedIdx + 1);
+        combo->onChange = [combo = combo.get(), onChange] {
+            onChange (combo->getSelectedId() - 1);
+        };
+        addAndMakeVisible (*combo);
+        combos.push_back (std::move (combo));
+    }
+
+    void addToggle (const juce::String& name, bool value, std::function<void(bool)> onChange)
+    {
+        auto toggle = std::make_unique<juce::ToggleButton> (name);
+        toggle->setToggleState (value, juce::dontSendNotification);
+        toggle->onClick = [toggle = toggle.get(), onChange] {
+            onChange (toggle->getToggleState());
+        };
+        addAndMakeVisible (*toggle);
+        toggles.push_back (std::move (toggle));
+    }
+
+    void buildControls()
+    {
+        switch (type)
+        {
+            case EffectsChain::Filter:
+                if (auto* fx = effectsChain.getFilter())
+                {
+                    addSlider ("High-Pass Freq", 20, 5000, 1, fx->getHighPassFreq(),
+                               [fx](float v) { fx->setHighPassFreq (v); }, " Hz");
+                    addSlider ("HP Poles", 1, 8, 1, fx->getHighPassPoles(),
+                               [fx](float v) { fx->setHighPassPoles ((int) v); });
+                    addSlider ("Low-Pass Freq", 200, 20000, 1, fx->getLowPassFreq(),
+                               [fx](float v) { fx->setLowPassFreq (v); }, " Hz");
+                    addSlider ("LP Poles", 1, 8, 1, fx->getLowPassPoles(),
+                               [fx](float v) { fx->setLowPassPoles ((int) v); });
+                    addToggle ("Harmonic Filter", fx->isHarmonicEnabled(),
+                               [fx](bool v) { fx->setHarmonicEnabled (v); });
+                    addSlider ("Harmonic Intensity", 0, 1, 0.01, fx->getHarmonicIntensity(),
+                               [fx](float v) { fx->setHarmonicIntensity (v); });
+                }
+                break;
+
+            case EffectsChain::Delay:
+                if (auto* fx = effectsChain.getDelay())
+                {
+                    addSlider ("Delay Time", 1, 2000, 1, fx->getDelayTimeMs(),
+                               [fx](float v) { fx->setDelayTimeMs (v); }, " ms");
+                    addSlider ("Feedback", 0, 0.95, 0.01, fx->getFeedback(),
+                               [fx](float v) { fx->setFeedback (v); });
+                    addSlider ("Dry/Wet", 0, 1, 0.01, fx->getDryWet(),
+                               [fx](float v) { fx->setDryWet (v); });
+                    addToggle ("Ping-Pong", fx->isPingPong(),
+                               [fx](bool v) { fx->setPingPong (v); });
+                }
+                break;
+
+            case EffectsChain::Granular:
+                if (auto* fx = effectsChain.getGranular())
+                {
+                    addSlider ("Grain Size", 10, 500, 1, fx->getGrainSize(),
+                               [fx](float v) { fx->setGrainSize (v); }, " ms");
+                    addSlider ("Pitch", -24, 24, 0.1, fx->getPitch(),
+                               [fx](float v) { fx->setPitch (v); }, " st");
+                    addSlider ("Density", 0.1, 4, 0.1, fx->getDensity(),
+                               [fx](float v) { fx->setDensity (v); });
+                    addSlider ("Spread", 0, 1, 0.01, fx->getSpread(),
+                               [fx](float v) { fx->setSpread (v); });
+                    addSlider ("Dry/Wet", 0, 1, 0.01, fx->getDryWet(),
+                               [fx](float v) { fx->setDryWet (v); });
+                }
+                break;
+
+            case EffectsChain::Tremolo:
+                if (auto* fx = effectsChain.getTremolo())
+                {
+                    addSlider ("Rate", 0.1, 20, 0.1, fx->getRate(),
+                               [fx](float v) { fx->setRate (v); }, " Hz");
+                    addSlider ("Depth", 0, 1, 0.01, fx->getDepth(),
+                               [fx](float v) { fx->setDepth (v); });
+                    addCombo ("Waveform", { "Sine", "Triangle", "Square" }, fx->getWaveform(),
+                              [fx](int v) { fx->setWaveform (v); });
+                    addToggle ("Stereo", fx->isStereo(),
+                               [fx](bool v) { fx->setStereo (v); });
+                }
+                break;
+
+            case EffectsChain::Distortion:
+                if (auto* fx = effectsChain.getDistortion())
+                {
+                    addCombo ("Algorithm", { "Soft Clip", "Hard Clip", "Wavefold", "Bitcrush" },
+                              fx->getAlgorithm(), [fx](int v) { fx->setAlgorithm (v); });
+                    addSlider ("Drive", 1, 20, 0.1, fx->getDrive(),
+                               [fx](float v) { fx->setDrive (v); });
+                    addSlider ("Tone", 0, 1, 0.01, fx->getTone(),
+                               [fx](float v) { fx->setTone (v); });
+                    addSlider ("Dry/Wet", 0, 1, 0.01, fx->getDryWet(),
+                               [fx](float v) { fx->setDryWet (v); });
+                    addSlider ("Bit Depth", 1, 16, 0.5, fx->getBitDepth(),
+                               [fx](float v) { fx->setBitDepth (v); }, " bits");
+                }
+                break;
+
+            case EffectsChain::Tape:
+                if (auto* fx = effectsChain.getTape())
+                {
+                    addSlider ("Saturation", 0, 1, 0.01, fx->getSaturation(),
+                               [fx](float v) { fx->setSaturation (v); });
+                    addSlider ("Bias", 0, 1, 0.01, fx->getBias(),
+                               [fx](float v) { fx->setBias (v); });
+                    addSlider ("Wow", 0, 1, 0.01, fx->getWowDepth(),
+                               [fx](float v) { fx->setWowDepth (v); });
+                    addSlider ("Flutter", 0, 1, 0.01, fx->getFlutterDepth(),
+                               [fx](float v) { fx->setFlutterDepth (v); });
+                    addSlider ("HF Loss", 0, 1, 0.01, fx->getHfLoss(),
+                               [fx](float v) { fx->setHfLoss (v); });
+                    addSlider ("Dry/Wet", 0, 1, 0.01, fx->getDryWet(),
+                               [fx](float v) { fx->setDryWet (v); });
+                }
+                break;
+        }
+    }
+};
+
+void MainComponent::showEffectEditor (int effectType)
+{
+    const char* effectNames[] = { "Filter", "Delay", "Granular", "Tremolo", "Distortion", "Tape" };
+
+    auto* editor = new EffectEditorContent (effectsChain, effectType);
+
+    juce::DialogWindow::LaunchOptions options;
+    options.content.setOwned (editor);
+    options.dialogTitle = juce::String (effectNames[effectType]) + " Settings";
+    options.dialogBackgroundColour = juce::Colour (0xff1a1a2e);
+    options.escapeKeyTriggersCloseButton = true;
+    options.useNativeTitleBar = true;
+    options.resizable = false;
+    options.launchAsync();
+}
+
 void MainComponent::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colour (0xff1a1a2e));
@@ -365,6 +683,12 @@ void MainComponent::paint (juce::Graphics& g)
 
     auto bounds = getLocalBounds().reduced (10);
     bounds.removeFromTop (55); // Header area with meters
+
+    // Effects section at bottom
+    auto effectsArea = bounds.removeFromBottom (80).reduced (5);
+    drawSection (effectsArea, "EFFECTS CHAIN");
+
+    bounds.removeFromBottom (10);
 
     const int sectionWidth = (bounds.getWidth() - 30) / 4;
 
@@ -424,6 +748,29 @@ void MainComponent::resized()
     settingsButton.setBounds (header.removeFromRight (70));
 
     bounds.removeFromTop (10);
+
+    // Effects chain section at bottom
+    auto effectsArea = bounds.removeFromBottom (80).reduced (5);
+    effectsArea.removeFromTop (28);  // Title space
+
+    // Move buttons on the left
+    auto moveArea = effectsArea.removeFromLeft (60);
+    moveLeftButton.setBounds (moveArea.removeFromTop (25).reduced (2));
+    moveArea.removeFromTop (5);
+    moveRightButton.setBounds (moveArea.removeFromTop (25).reduced (2));
+
+    // Effect buttons and toggles
+    const int effectWidth = (effectsArea.getWidth() - 20) / 6;
+    effectsArea.removeFromLeft (10);
+
+    for (int i = 0; i < 6; ++i)
+    {
+        auto effectSlot = effectsArea.removeFromLeft (effectWidth);
+        effectButtons[i].setBounds (effectSlot.removeFromTop (28).reduced (2));
+        effectEnableToggles[i].setBounds (effectSlot.removeFromTop (20).reduced (4, 0));
+    }
+
+    bounds.removeFromBottom (10);
 
     const int sectionWidth = (bounds.getWidth() - 30) / 4;
     const int knobSize = 60;
@@ -565,6 +912,9 @@ void MainComponent::audioDeviceAboutToStart (juce::AudioIODevice* device)
 
     // Initialize loop recorder
     loopRecorder.prepareToPlay (currentSampleRate, blockSize);
+
+    // Initialize effects chain
+    effectsChain.prepareToPlay (currentSampleRate, blockSize);
 }
 
 void MainComponent::audioDeviceStopped()
@@ -675,6 +1025,9 @@ void MainComponent::audioDeviceIOCallbackWithContext (const float* const* inputC
                 outL = mid + (processedL - mid) * width;
                 outR = mid + (processedR - mid) * width;
             }
+
+            // Process through effects chain
+            effectsChain.processSample (outL, outR);
 
             outputSum += outL * outL + outR * outR;
 
