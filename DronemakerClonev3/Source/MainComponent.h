@@ -211,6 +211,12 @@ private:
     std::atomic<float> liveLevel { 1.0f };
     std::atomic<float> loopLevel { 0.5f };
 
+    // Per-loop controls
+    std::array<juce::Slider, 4> loopVolumeSliders;
+    std::array<juce::Slider, 4> loopHPSliders;
+    std::array<juce::Slider, 4> loopLPSliders;
+    std::array<juce::ComboBox, 4> loopPitchCombos;
+
     // Metering
     std::atomic<float> inputLevel { 0.0f };
     std::atomic<float> outputLevel { 0.0f };

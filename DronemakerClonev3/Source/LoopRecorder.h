@@ -33,6 +33,12 @@ public:
     // Get mixed output of all active loops (call once per sample)
     float getLoopMix();
 
+    // Per-slot parameter setters
+    void setSlotVolume (int slot, float vol);
+    void setSlotHighPass (int slot, float freqHz);
+    void setSlotLowPass (int slot, float freqHz);
+    void setSlotPitchOctave (int slot, int octave);  // -1, 0, or +1
+
     // State queries
     bool isSlotActive (int slot) const;
     bool isRecording() const { return activeRecordSlot >= 0; }
@@ -45,15 +51,28 @@ private:
     struct LoopSlot
     {
         std::vector<float> buffer;
-        int length = 0;           // Actual recorded length in samples
-        int playPosition = 0;     // Current playback position
+        int length = 0;              // Actual recorded length in samples
+        double playPosition = 0.0;   // Current playback position (float for pitch shifting)
         bool hasContent = false;
+
+        // Per-slot controls
+        float volume = 1.0f;
+        float hpFreq = 20.0f;        // High-pass cutoff Hz
+        float lpFreq = 20000.0f;     // Low-pass cutoff Hz
+        int pitchOctave = 0;         // -1, 0, or +1
+
+        // Filter states (simple one-pole filters)
+        float hpState = 0.0f;
+        float lpState = 0.0f;
     };
 
     std::array<LoopSlot, numSlots> slots;
     int activeRecordSlot = -1;    // Which slot is currently recording (-1 = none)
     int maxLoopSamples = 0;       // Calculated from sample rate
     double currentSampleRate = 44100.0;
+
+    // Helper to get sample with linear interpolation
+    float getInterpolatedSample (const LoopSlot& slot, double position) const;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LoopRecorder)
 };

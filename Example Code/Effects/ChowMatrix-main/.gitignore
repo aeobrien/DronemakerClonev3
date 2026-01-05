@@ -1,0 +1,13 @@
+# build artifacts
+build*/
+bin/
+*_Packaged
+*.exe
+*.dmg
+
+# IDE settings
+.vscode/
+.idea/
+
+# Mac extras
+.DS_Store

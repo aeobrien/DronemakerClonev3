@@ -245,9 +245,53 @@ MainComponent::MainComponent()
         loopLevel.store ((float) loopLevelKnob.getValue());
     };
 
-    // Loop slot buttons
+    // Per-loop controls
     for (int i = 0; i < 4; ++i)
     {
+        // Volume slider (vertical)
+        loopVolumeSliders[i].setSliderStyle (juce::Slider::LinearVertical);
+        loopVolumeSliders[i].setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+        loopVolumeSliders[i].setRange (0.0, 1.0, 0.01);
+        loopVolumeSliders[i].setValue (1.0);
+        loopVolumeSliders[i].onValueChange = [this, i] {
+            loopRecorder.setSlotVolume (i, (float) loopVolumeSliders[i].getValue());
+        };
+        addAndMakeVisible (loopVolumeSliders[i]);
+
+        // High-pass slider
+        loopHPSliders[i].setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+        loopHPSliders[i].setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+        loopHPSliders[i].setRange (20.0, 2000.0, 1.0);
+        loopHPSliders[i].setSkewFactorFromMidPoint (200.0);
+        loopHPSliders[i].setValue (20.0);
+        loopHPSliders[i].onValueChange = [this, i] {
+            loopRecorder.setSlotHighPass (i, (float) loopHPSliders[i].getValue());
+        };
+        addAndMakeVisible (loopHPSliders[i]);
+
+        // Low-pass slider
+        loopLPSliders[i].setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+        loopLPSliders[i].setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+        loopLPSliders[i].setRange (500.0, 20000.0, 1.0);
+        loopLPSliders[i].setSkewFactorFromMidPoint (4000.0);
+        loopLPSliders[i].setValue (20000.0);
+        loopLPSliders[i].onValueChange = [this, i] {
+            loopRecorder.setSlotLowPass (i, (float) loopLPSliders[i].getValue());
+        };
+        addAndMakeVisible (loopLPSliders[i]);
+
+        // Pitch selector
+        loopPitchCombos[i].addItem ("-1 oct", 1);
+        loopPitchCombos[i].addItem ("Normal", 2);
+        loopPitchCombos[i].addItem ("+1 oct", 3);
+        loopPitchCombos[i].setSelectedId (2);
+        loopPitchCombos[i].onChange = [this, i] {
+            int octave = loopPitchCombos[i].getSelectedId() - 2;  // -1, 0, or +1
+            loopRecorder.setSlotPitchOctave (i, octave);
+        };
+        addAndMakeVisible (loopPitchCombos[i]);
+
+        // Loop button
         loopButtons[i].setButtonText ("L" + juce::String (i + 1));
         loopButtons[i].setColour (juce::TextButton::buttonColourId, juce::Colours::darkgrey);
         loopButtons[i].onClick = [this, i] {
@@ -258,7 +302,7 @@ MainComponent::MainComponent()
             }
             else if (loopRecorder.isSlotActive (i))
             {
-                // Slot has content - clear it on click (could also be right-click only)
+                // Slot has content - clear it on click
                 loopRecorder.clearSlot (i);
             }
             else
@@ -276,7 +320,7 @@ MainComponent::MainComponent()
     addAndMakeVisible (clearLoopsButton);
 
     startTimerHz (30);
-    setSize (850, 580);
+    setSize (1000, 620);
 }
 
 MainComponent::~MainComponent()
@@ -457,22 +501,41 @@ void MainComponent::resized()
     auto loopsArea = bounds.reduced (5);
     loopsArea.removeFromTop (28);
 
+    // Live/Loop level knobs at top
     auto loopsRow1 = loopsArea.removeFromTop (knobSize + labelHeight + 5);
     layoutKnobWithLabel (liveLevelKnob, liveLevelLabel, loopsRow1);
     layoutKnobWithLabel (loopLevelKnob, loopLevelLabel, loopsRow1);
 
-    loopsArea.removeFromTop (10);
+    loopsArea.removeFromTop (5);
 
-    // Loop buttons row
-    auto buttonRow = loopsArea.removeFromTop (30);
-    const int buttonWidth = 40;
+    // Per-loop controls - 4 vertical strips
+    auto loopStripsArea = loopsArea.removeFromTop (200);
+    const int stripWidth = loopStripsArea.getWidth() / 4;
+    const int smallKnob = 40;
+
     for (int i = 0; i < 4; ++i)
     {
-        loopButtons[i].setBounds (buttonRow.removeFromLeft (buttonWidth));
-        buttonRow.removeFromLeft (5);
+        auto strip = loopStripsArea.removeFromLeft (stripWidth).reduced (2);
+
+        // Volume slider (vertical, at top)
+        loopVolumeSliders[i].setBounds (strip.removeFromTop (60).reduced (8, 0));
+
+        // HP knob
+        loopHPSliders[i].setBounds (strip.removeFromTop (smallKnob).reduced (4, 0));
+
+        // LP knob
+        loopLPSliders[i].setBounds (strip.removeFromTop (smallKnob).reduced (4, 0));
+
+        // Pitch selector
+        loopPitchCombos[i].setBounds (strip.removeFromTop (22).reduced (2, 0));
+
+        strip.removeFromTop (4);
+
+        // Loop button at bottom
+        loopButtons[i].setBounds (strip.removeFromTop (28).reduced (4, 0));
     }
 
-    loopsArea.removeFromTop (10);
+    loopsArea.removeFromTop (5);
     clearLoopsButton.setBounds (loopsArea.removeFromTop (25).removeFromLeft (80));
 }
 
