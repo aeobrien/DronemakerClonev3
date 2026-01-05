@@ -22,6 +22,7 @@ public:
     void setInterpFactor(float f) { interpFactor = juce::jlimit(0.0f, 1.0f, f); }
     void setSmoothingFactor(float f) { smoothingFactor = juce::jlimit(0.01f, 0.5f, f); }
     void setThreshold(float t) { threshold = juce::jlimit(0.0f, 0.1f, t); }
+    void setSpectralTilt(float dbPerOctave) { spectralTilt = juce::jlimit(-6.0f, 6.0f, dbPerOctave); }
     void setRandomizePhases(bool b) { randomizePhases = b; }
     void setUsePeakAmplitudes(bool b) { usePeakAmplitudes = b; }
 
@@ -94,6 +95,10 @@ private:
 
     // Threshold below which bins are zeroed (noise gate)
     float threshold = 0.001f;
+
+    // Spectral tilt: frequency-dependent threshold adjustment (dB/octave)
+    // Negative = high frequencies decay faster, Positive = low frequencies decay faster
+    float spectralTilt = 0.0f;
 
     // Phase randomization for ethereal quality
     juce::Random random;

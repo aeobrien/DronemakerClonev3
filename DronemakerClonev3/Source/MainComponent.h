@@ -173,6 +173,7 @@ private:
     juce::Slider dryWetKnob;       juce::Label dryWetLabel;
     juce::Slider smoothingKnob;   juce::Label smoothingLabel;
     juce::Slider thresholdKnob;   juce::Label thresholdLabel;
+    juce::Slider tiltKnob;        juce::Label tiltLabel;
     juce::Slider decayKnob;       juce::Label decayLabel;
     juce::Slider historyKnob;     juce::Label historyLabel;
     juce::Slider stereoWidthKnob; juce::Label stereoWidthLabel;

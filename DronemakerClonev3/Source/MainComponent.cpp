@@ -75,6 +75,13 @@ MainComponent::MainComponent()
         fftProcessorR.setThreshold (v);
     };
 
+    setupKnob (tiltKnob, tiltLabel, "Tilt", -6.0, 6.0, 0.1, 0.0, " dB/oct");
+    tiltKnob.onValueChange = [this] {
+        float v = (float) tiltKnob.getValue();
+        fftProcessorL.setSpectralTilt (v);
+        fftProcessorR.setSpectralTilt (v);
+    };
+
     setupKnob (decayKnob, decayLabel, "Decay", 0.99, 1.0, 0.0001, 1.0);
     decayKnob.onValueChange = [this] {
         float v = (float) decayKnob.getValue();
@@ -320,6 +327,7 @@ void MainComponent::resized()
     layoutKnobWithLabel (dryWetKnob, dryWetLabel, droneRow1);
     layoutKnobWithLabel (smoothingKnob, smoothingLabel, droneRow1);
     layoutKnobWithLabel (thresholdKnob, thresholdLabel, droneRow1);
+    layoutKnobWithLabel (tiltKnob, tiltLabel, droneRow1);
 
     auto droneRow2 = droneArea.removeFromTop (knobSize + labelHeight + 5);
     layoutKnobWithLabel (decayKnob, decayLabel, droneRow2);

@@ -264,8 +264,19 @@ void FFTProcessor::processSpectrum(float* data, int numBinsParam)
         else
             outputPhase = phase;
 
-        // -------- Threshold gating --------
-        float finalMag = (smoothMag > threshold) ? smoothMag : 0.0f;
+        // -------- Threshold gating with spectral tilt --------
+        float effectiveThreshold = threshold;
+        if (std::abs(spectralTilt) > 0.001f && binFreq > 20.0f)
+        {
+            // Reference frequency (middle of audible range)
+            const float refFreq = 1000.0f;
+            // Calculate octaves from reference
+            float octavesFromRef = std::log2(binFreq / refFreq);
+            // Convert dB/octave tilt to linear multiplier
+            float tiltMultiplier = std::pow(10.0f, (spectralTilt * octavesFromRef) / 20.0f);
+            effectiveThreshold = threshold * tiltMultiplier;
+        }
+        float finalMag = (smoothMag > effectiveThreshold) ? smoothMag : 0.0f;
 
         // Apply filter gains
         finalMag *= totalFilterGain;
