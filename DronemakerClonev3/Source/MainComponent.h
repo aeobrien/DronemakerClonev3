@@ -5,6 +5,190 @@
 #include "Effects/EffectsChain.h"
 
 //==============================================================================
+// Minimal, instrument-like look & feel (appearance only)
+class MinimalLookAndFeel : public juce::LookAndFeel_V4
+{
+public:
+    MinimalLookAndFeel()
+    {
+        // Global palette
+        const auto bg      = juce::Colour (0xff101114);
+        const auto panel   = juce::Colour (0xff17181d);
+        const auto panel2  = juce::Colour (0xff1d1f26);
+        const auto text    = juce::Colour (0xffe9e9ea);
+        const auto textDim = juce::Colour (0xffa9a9ad);
+        const auto accent  = juce::Colour (0xff5dd6c6); // restrained mint accent
+
+        setColour (juce::ResizableWindow::backgroundColourId, bg);
+
+        setColour (juce::Label::textColourId, textDim);
+        setColour (juce::TextButton::textColourOffId, text.withAlpha (0.85f));
+        setColour (juce::TextButton::textColourOnId,  text);
+
+        setColour (juce::TextButton::buttonColourId, panel2);
+        setColour (juce::TextButton::buttonOnColourId, accent.withAlpha (0.18f));
+
+        setColour (juce::ComboBox::backgroundColourId, panel2);
+        setColour (juce::ComboBox::outlineColourId, juce::Colours::white.withAlpha (0.08f));
+        setColour (juce::ComboBox::textColourId, text.withAlpha (0.85f));
+        setColour (juce::ComboBox::arrowColourId, textDim);
+
+        setColour (juce::Slider::rotarySliderFillColourId, accent);
+        setColour (juce::Slider::rotarySliderOutlineColourId, juce::Colours::white.withAlpha (0.07f));
+        setColour (juce::Slider::thumbColourId, text);
+        setColour (juce::Slider::textBoxBackgroundColourId, panel);
+        setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::white.withAlpha (0.08f));
+        setColour (juce::Slider::textBoxTextColourId, text.withAlpha (0.85f));
+
+        setColour (juce::ToggleButton::textColourId, textDim);
+    }
+
+    juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override
+    {
+        return juce::Font (juce::Font::getDefaultSansSerifFontName(),
+                           juce::jlimit (11.0f, 14.0f, (float) buttonHeight * 0.38f),
+                           juce::Font::plain);
+    }
+
+    void drawButtonBackground (juce::Graphics& g,
+                               juce::Button& button,
+                               const juce::Colour& backgroundColour,
+                               bool isMouseOverButton,
+                               bool isButtonDown) override
+    {
+        auto bounds = button.getLocalBounds().toFloat().reduced (0.5f);
+
+        const float corner = 9.0f;
+        const auto base = backgroundColour
+                            .withMultipliedAlpha (button.isEnabled() ? 1.0f : 0.45f);
+
+        auto fill = base;
+        if (isButtonDown)      fill = fill.brighter (0.10f);
+        else if (isMouseOverButton) fill = fill.brighter (0.06f);
+
+        g.setColour (fill);
+        g.fillRoundedRectangle (bounds, corner);
+
+        // Subtle border
+        g.setColour (juce::Colours::white.withAlpha (0.06f));
+        g.drawRoundedRectangle (bounds, corner, 1.0f);
+    }
+
+    void drawRotarySlider (juce::Graphics& g,
+                           int x, int y, int width, int height,
+                           float sliderPosProportional,
+                           float rotaryStartAngle,
+                           float rotaryEndAngle,
+                           juce::Slider& slider) override
+    {
+        auto bounds = juce::Rectangle<float> ((float) x, (float) y, (float) width, (float) height)
+                          .reduced (4.0f);
+
+        const auto radius = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.5f;
+        const auto centre = bounds.getCentre();
+        const auto angle = rotaryStartAngle + sliderPosProportional * (rotaryEndAngle - rotaryStartAngle);
+
+        // Track
+        const float trackThickness = juce::jlimit (2.0f, 4.0f, radius * 0.18f);
+        juce::Path track;
+        track.addCentredArc (centre.x, centre.y,
+                             radius - trackThickness * 0.5f,
+                             radius - trackThickness * 0.5f,
+                             0.0f,
+                             rotaryStartAngle,
+                             rotaryEndAngle,
+                             true);
+
+        g.setColour (slider.findColour (juce::Slider::rotarySliderOutlineColourId));
+        g.strokePath (track, juce::PathStrokeType (trackThickness, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+        // Value arc
+        juce::Path value;
+        value.addCentredArc (centre.x, centre.y,
+                             radius - trackThickness * 0.5f,
+                             radius - trackThickness * 0.5f,
+                             0.0f,
+                             rotaryStartAngle,
+                             angle,
+                             true);
+
+        g.setColour (slider.findColour (juce::Slider::rotarySliderFillColourId).withAlpha (slider.isEnabled() ? 0.95f : 0.45f));
+        g.strokePath (value, juce::PathStrokeType (trackThickness, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+        // Pointer
+        juce::Path p;
+        const float pointerLen = radius * 0.72f;
+        const float pointerTh  = juce::jlimit (1.5f, 2.6f, radius * 0.10f);
+        p.addRoundedRectangle (-pointerTh * 0.5f, -pointerLen, pointerTh, pointerLen, pointerTh * 0.5f);
+
+        g.setColour (slider.findColour (juce::Slider::thumbColourId).withAlpha (slider.isEnabled() ? 0.85f : 0.35f));
+        g.fillPath (p, juce::AffineTransform::rotation (angle).translated (centre.x, centre.y));
+    }
+
+    void drawTickBox (juce::Graphics& g,
+                      juce::Component& component,
+                      float x, float y, float w, float h,
+                      bool ticked,
+                      bool isEnabled,
+                      bool isMouseOverButton,
+                      bool isButtonDown) override
+    {
+        juce::ignoreUnused (component, isMouseOverButton, isButtonDown);
+
+        auto r = juce::Rectangle<float> (x, y, w, h).reduced (1.0f);
+        const float corner = 4.0f;
+
+        g.setColour (juce::Colours::white.withAlpha (isEnabled ? 0.10f : 0.05f));
+        g.fillRoundedRectangle (r, corner);
+
+        g.setColour (juce::Colours::white.withAlpha (isEnabled ? 0.10f : 0.05f));
+        g.drawRoundedRectangle (r, corner, 1.0f);
+
+        if (ticked)
+        {
+            const auto accent = findColour (juce::Slider::rotarySliderFillColourId);
+            g.setColour (accent.withAlpha (isEnabled ? 0.90f : 0.35f));
+
+            juce::Path tick;
+            tick.startNewSubPath (r.getX() + r.getWidth() * 0.22f, r.getCentreY());
+            tick.lineTo          (r.getX() + r.getWidth() * 0.42f, r.getBottom() - r.getHeight() * 0.22f);
+            tick.lineTo          (r.getRight() - r.getWidth() * 0.20f, r.getY() + r.getHeight() * 0.22f);
+
+            g.strokePath (tick, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
+    }
+
+    void drawComboBox (juce::Graphics& g, int width, int height,
+                       bool, int, int, int, int, juce::ComboBox& box) override
+    {
+        auto bounds = juce::Rectangle<float> (0, 0, (float) width, (float) height).reduced (0.5f);
+        const float corner = 8.0f;
+
+        g.setColour (box.findColour (juce::ComboBox::backgroundColourId));
+        g.fillRoundedRectangle (bounds, corner);
+
+        g.setColour (box.findColour (juce::ComboBox::outlineColourId));
+        g.drawRoundedRectangle (bounds, corner, 1.0f);
+
+        // Arrow
+        auto arrowZone = bounds.removeFromRight (18.0f).reduced (4.0f, 6.0f);
+        juce::Path arrow;
+        arrow.startNewSubPath (arrowZone.getX(), arrowZone.getY());
+        arrow.lineTo (arrowZone.getCentreX(), arrowZone.getBottom());
+        arrow.lineTo (arrowZone.getRight(), arrowZone.getY());
+
+        g.setColour (box.findColour (juce::ComboBox::arrowColourId));
+        g.strokePath (arrow, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+
+    void positionComboBoxText (juce::ComboBox& box, juce::Label& label) override
+    {
+        label.setBounds (1, 1, box.getWidth() - 20, box.getHeight() - 2);
+        label.setFont (juce::Font (juce::Font::getDefaultSansSerifFontName(), 12.0f, juce::Font::plain));
+    }
+};
+
+//==============================================================================
 // Settings dialog for audio device configuration
 class SettingsDialog : public juce::Component
 {
@@ -147,6 +331,10 @@ private:
     // Audio
     juce::AudioDeviceManager deviceManager;
 
+    // Look & Feel (appearance only)
+    std::unique_ptr<MinimalLookAndFeel> lookAndFeel;
+
+
     // Header buttons
     juce::TextButton settingsButton { "Settings" };
     juce::TextButton resourcesButton { "Resources" };
@@ -170,12 +358,10 @@ private:
 
     // ===== LOOPS SECTION =====
     LoopRecorder loopRecorder;
-    juce::Slider liveLevelKnob;   juce::Label liveLevelLabel;
-    juce::Slider loopLevelKnob;   juce::Label loopLevelLabel;
+    juce::Slider loopMixKnob;     juce::Label loopMixLabel;  // 0 = all live, 1 = all loops
     std::array<juce::TextButton, 4> loopButtons;
     juce::TextButton clearLoopsButton { "Clear All" };
-    std::atomic<float> liveLevel { 1.0f };
-    std::atomic<float> loopLevel { 0.5f };
+    std::atomic<float> loopMix { 0.0f };  // 0 = live only, 1 = loops only
 
     // Per-loop controls
     std::array<juce::Slider, 4> loopVolumeSliders;

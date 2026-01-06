@@ -8,6 +8,10 @@
 
 MainComponent::MainComponent()
 {
+    // Appearance-only LookAndFeel (keeps all functionality unchanged)
+    lookAndFeel = std::make_unique<MinimalLookAndFeel>();
+    setLookAndFeel (lookAndFeel.get());
+
     // Initialize audio device
     auto err = deviceManager.initialise (1, 2, nullptr, true);
     if (err.isNotEmpty())
@@ -27,7 +31,7 @@ MainComponent::MainComponent()
         juce::DialogWindow::LaunchOptions options;
         options.content.setOwned (dialog);
         options.dialogTitle = "Audio Settings";
-        options.dialogBackgroundColour = juce::Colours::darkgrey;
+        options.dialogBackgroundColour = juce::Colour (0xff2a2b31);
         options.escapeKeyTriggersCloseButton = true;
         options.useNativeTitleBar = true;
         options.resizable = false;
@@ -50,56 +54,71 @@ MainComponent::MainComponent()
     addAndMakeVisible (resourcesButton);
 
     // ===== DRONE SECTION =====
-    setupKnob (dryWetKnob, dryWetLabel, "Dry/Wet", 0.0, 1.0, 0.01, 0.2);
+    // Helper for knobs with rotated labels (no value display)
+    // Labels will be drawn rotated in paint(), so we don't make them visible
+    auto setupRotatedKnob = [this](juce::Slider& knob, juce::Label& label, const juce::String& name,
+                                    double min, double max, double step, double initial) {
+        knob.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+        knob.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+        knob.setRange (min, max, step);
+        knob.setValue (initial);
+        addAndMakeVisible (knob);
+
+        // Store label text but don't show it - we'll draw it rotated
+        label.setText (name, juce::dontSendNotification);
+        label.setVisible (false);
+    };
+
+    setupRotatedKnob (dryWetKnob, dryWetLabel, "Dry/Wet", 0.0, 1.0, 0.01, 0.2);
     dryWetKnob.onValueChange = [this] {
         float v = (float) dryWetKnob.getValue();
         fftProcessorL.setInterpFactor (v);
         fftProcessorR.setInterpFactor (v);
     };
 
-    setupKnob (smoothingKnob, smoothingLabel, "Smooth", 0.01, 0.5, 0.01, 0.05);
+    setupRotatedKnob (smoothingKnob, smoothingLabel, "Smooth", 0.01, 0.5, 0.01, 0.05);
     smoothingKnob.onValueChange = [this] {
         float v = (float) smoothingKnob.getValue();
         fftProcessorL.setSmoothingFactor (v);
         fftProcessorR.setSmoothingFactor (v);
     };
 
-    setupKnob (thresholdKnob, thresholdLabel, "Thresh", 0.0, 0.01, 0.0001, 0.001);
+    setupRotatedKnob (thresholdKnob, thresholdLabel, "Thresh", 0.0, 0.01, 0.0001, 0.001);
     thresholdKnob.onValueChange = [this] {
         float v = (float) thresholdKnob.getValue();
         fftProcessorL.setThreshold (v);
         fftProcessorR.setThreshold (v);
     };
 
-    setupKnob (tiltKnob, tiltLabel, "Tilt", -6.0, 6.0, 0.1, 0.0, " dB/oct");
+    setupRotatedKnob (tiltKnob, tiltLabel, "Tilt", -6.0, 6.0, 0.1, 0.0);
     tiltKnob.onValueChange = [this] {
         float v = (float) tiltKnob.getValue();
         fftProcessorL.setSpectralTilt (v);
         fftProcessorR.setSpectralTilt (v);
     };
 
-    setupKnob (delayKnob, delayLabel, "Delay", 0.0, 1.0, 0.01, 0.0);
+    setupRotatedKnob (delayKnob, delayLabel, "Delay", 0.0, 1.0, 0.01, 0.0);
     delayKnob.onValueChange = [this] {
         float v = (float) delayKnob.getValue();
         fftProcessorL.setDroneDelay (v);
         fftProcessorR.setDroneDelay (v);
     };
 
-    setupKnob (decayKnob, decayLabel, "Decay", 0.99, 1.0, 0.0001, 1.0);
+    setupRotatedKnob (decayKnob, decayLabel, "Decay", 0.99, 1.0, 0.0001, 1.0);
     decayKnob.onValueChange = [this] {
         float v = (float) decayKnob.getValue();
         fftProcessorL.setDecayRate (v);
         fftProcessorR.setDecayRate (v);
     };
 
-    setupKnob (historyKnob, historyLabel, "History", 0.5, 10.0, 0.1, 4.5, " s");
+    setupRotatedKnob (historyKnob, historyLabel, "History", 0.5, 10.0, 0.1, 4.5);
     historyKnob.onValueChange = [this] {
         float v = (float) historyKnob.getValue();
         fftProcessorL.setHistorySeconds (v);
         fftProcessorR.setHistorySeconds (v);
     };
 
-    setupKnob (stereoWidthKnob, stereoWidthLabel, "Stereo", 0.0, 1.0, 0.01, 1.0);
+    setupRotatedKnob (stereoWidthKnob, stereoWidthLabel, "Stereo", 0.0, 1.0, 0.01, 1.0);
     stereoWidthKnob.onValueChange = [this] {
         stereoWidth.store ((float) stereoWidthKnob.getValue());
     };
@@ -121,36 +140,54 @@ MainComponent::MainComponent()
     addAndMakeVisible (phaseToggle);
 
     // ===== PITCH SECTION (now part of Drone column) =====
-    setupKnob (pitchKnob, pitchLabel, "Semitones", -24.0, 24.0, 0.1, 0.0, " st");
+    // Pitch knobs with rotated labels and value display
+    pitchKnob.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+    pitchKnob.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 50, 14);
+    pitchKnob.setRange (-24.0, 24.0, 0.1);
+    pitchKnob.setValue (0.0);
+    pitchKnob.setTextValueSuffix (" st");
     pitchKnob.onValueChange = [this] {
         float v = (float) pitchKnob.getValue();
         fftProcessorL.setPitchShiftSemitones (v);
         fftProcessorR.setPitchShiftSemitones (v);
     };
+    addAndMakeVisible (pitchKnob);
+    pitchLabel.setText ("Semitones", juce::dontSendNotification);
+    pitchLabel.setVisible (false);  // Will be drawn rotated
 
-    setupKnob (octaveKnob, octaveLabel, "Octaves", -4.0, 4.0, 1.0, 0.0, " oct");
+    octaveKnob.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+    octaveKnob.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 50, 14);
+    octaveKnob.setRange (-4.0, 4.0, 1.0);
+    octaveKnob.setValue (0.0);
+    octaveKnob.setTextValueSuffix (" oct");
     octaveKnob.onValueChange = [this] {
         float v = (float) octaveKnob.getValue();
         fftProcessorL.setPitchShiftOctaves (v);
         fftProcessorR.setPitchShiftOctaves (v);
     };
+    addAndMakeVisible (octaveKnob);
+    octaveLabel.setText ("Octaves", juce::dontSendNotification);
+    octaveLabel.setVisible (false);  // Will be drawn rotated
+
+    // Live/Loop mix knob (in drone section, same row as pitch)
+    loopMixKnob.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+    loopMixKnob.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    loopMixKnob.setRange (0.0, 1.0, 0.01);
+    loopMixKnob.setValue (0.0);
+    loopMixKnob.onValueChange = [this] {
+        loopMix.store ((float) loopMixKnob.getValue());
+    };
+    addAndMakeVisible (loopMixKnob);
+    loopMixLabel.setText ("Live/Loop", juce::dontSendNotification);
+    loopMixLabel.setVisible (false);  // Will be drawn rotated
 
     // ===== LOOPS SECTION =====
-    setupKnob (liveLevelKnob, liveLevelLabel, "Live", 0.0, 1.0, 0.01, 1.0);
-    liveLevelKnob.onValueChange = [this] {
-        liveLevel.store ((float) liveLevelKnob.getValue());
-    };
-
-    setupKnob (loopLevelKnob, loopLevelLabel, "Loop", 0.0, 1.0, 0.01, 0.5);
-    loopLevelKnob.onValueChange = [this] {
-        loopLevel.store ((float) loopLevelKnob.getValue());
-    };
 
     // Per-loop controls
     for (int i = 0; i < 4; ++i)
     {
-        // Volume slider (rotary knob)
-        loopVolumeSliders[i].setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+        // Volume slider (vertical slider)
+        loopVolumeSliders[i].setSliderStyle (juce::Slider::LinearVertical);
         loopVolumeSliders[i].setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
         loopVolumeSliders[i].setRange (0.0, 1.0, 0.01);
         loopVolumeSliders[i].setValue (1.0);
@@ -225,7 +262,7 @@ MainComponent::MainComponent()
 
         // Loop button
         loopButtons[i].setButtonText ("Loop " + juce::String (i + 1));
-        loopButtons[i].setColour (juce::TextButton::buttonColourId, juce::Colours::darkgrey);
+        loopButtons[i].setColour (juce::TextButton::buttonColourId, juce::Colour (0xff2a2b31));
         loopButtons[i].onClick = [this, i] {
             if (loopRecorder.isRecording() && loopRecorder.getRecordingSlot() == i)
                 loopRecorder.stopRecording();
@@ -248,7 +285,7 @@ MainComponent::MainComponent()
     for (int i = 0; i < 6; ++i)
     {
         effectButtons[i].setButtonText (effectNames[i]);
-        effectButtons[i].setColour (juce::TextButton::buttonColourId, juce::Colours::darkgrey);
+        effectButtons[i].setColour (juce::TextButton::buttonColourId, juce::Colour (0xff2a2b31));
         effectButtons[i].onClick = [this, i] {
             // Single click: select this effect and show its parameters
             // Right-click or ctrl-click: toggle enable
@@ -336,6 +373,9 @@ MainComponent::MainComponent()
 
 MainComponent::~MainComponent()
 {
+    setLookAndFeel (nullptr);
+    lookAndFeel.reset();
+
     deviceManager.removeAudioCallback (this);
 }
 
@@ -344,7 +384,7 @@ void MainComponent::setupKnob (juce::Slider& knob, juce::Label& label, const juc
                                 const juce::String& suffix)
 {
     knob.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
-    knob.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 55, 15);
+    knob.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 52, 14);
     knob.setRange (min, max, step);
     knob.setValue (initial);
     if (suffix.isNotEmpty())
@@ -353,7 +393,7 @@ void MainComponent::setupKnob (juce::Slider& knob, juce::Label& label, const juc
 
     label.setText (name, juce::dontSendNotification);
     label.setJustificationType (juce::Justification::centred);
-    label.setFont (juce::Font (11.0f));
+    label.setFont (juce::Font (10.5f, juce::Font::plain));
     label.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
     addAndMakeVisible (label);
 }
@@ -377,11 +417,11 @@ void MainComponent::updateEffectButtonColors()
         effectButtons[i].setButtonText (buttonText);
 
         if (i == selectedEffectSlot)
-            effectButtons[i].setColour (juce::TextButton::buttonColourId, juce::Colours::dodgerblue);
+            effectButtons[i].setColour (juce::TextButton::buttonColourId, juce::Colour (0xff5dd6c6));
         else if (enabled)
-            effectButtons[i].setColour (juce::TextButton::buttonColourId, juce::Colours::green.darker());
+            effectButtons[i].setColour (juce::TextButton::buttonColourId, juce::Colour (0xff1f2a27));
         else
-            effectButtons[i].setColour (juce::TextButton::buttonColourId, juce::Colours::darkgrey);
+            effectButtons[i].setColour (juce::TextButton::buttonColourId, juce::Colour (0xff2a2b31));
     }
 }
 
@@ -586,65 +626,153 @@ void MainComponent::updateEffectParameterKnobs()
 
 void MainComponent::paint (juce::Graphics& g)
 {
-    g.fillAll (juce::Colour (0xff1a1a2e));
+    // Background
+    g.fillAll (juce::Colour (0xff101114));
 
-    auto drawSection = [&](juce::Rectangle<int> area, const juce::String& title) {
-        g.setColour (juce::Colour (0xff16213e));
-        g.fillRoundedRectangle (area.toFloat(), 8.0f);
-        g.setColour (juce::Colour (0xff0f3460));
-        g.drawRoundedRectangle (area.toFloat(), 8.0f, 1.5f);
+    // Shared styling
+    const auto panelFill   = juce::Colour (0xff17181d);
+    const auto panelFill2  = juce::Colour (0xff1d1f26);
+    const auto border      = juce::Colours::white.withAlpha (0.06f);
+    const auto titleColour = juce::Colours::white.withAlpha (0.78f);
+    const auto dimText     = juce::Colours::white.withAlpha (0.40f);
 
-        g.setColour (juce::Colours::white);
-        g.setFont (juce::Font (14.0f).boldened());
-        g.drawText (title, area.removeFromTop (25), juce::Justification::centred);
+    auto drawPanel = [&](juce::Rectangle<int> area, const juce::String& title, bool showTitle = true)
+    {
+        // Keep the title strip inside the panel, but do not modify the caller's rectangle
+        auto r = area;
+
+        g.setColour (panelFill);
+        g.fillRoundedRectangle (r.toFloat(), 12.0f);
+
+        g.setColour (border);
+        g.drawRoundedRectangle (r.toFloat().reduced (0.5f), 12.0f, 1.0f);
+
+        if (showTitle && title.isNotEmpty())
+        {
+            // Title - centered
+            auto titleArea = r.removeFromTop (24);
+            g.setColour (titleColour);
+            g.setFont (juce::Font (12.0f, juce::Font::bold));
+            g.drawText (title.toUpperCase(), titleArea, juce::Justification::centred, false);
+
+            // Subtle divider under title
+            g.setColour (juce::Colours::white.withAlpha (0.04f));
+            g.drawLine ((float) area.getX() + 10.0f,
+                        (float) area.getY() + 24.0f,
+                        (float) area.getRight() - 10.0f,
+                        (float) area.getY() + 24.0f,
+                        1.0f);
+        }
     };
 
+    // Layout mirrors resized(): header row + two columns + chain row + param row
     auto bounds = getLocalBounds().reduced (10);
-    bounds.removeFromTop (40);  // Header area
 
-    // Effect parameters section at bottom
+    // Header visual area (buttons are laid out in resized())
+    auto header = bounds.removeFromTop (40);
+
+    // Header background strip
+    {
+        auto headerBg = header.toFloat();
+        g.setColour (panelFill2);
+        g.fillRoundedRectangle (headerBg, 12.0f);
+
+        g.setColour (border);
+        g.drawRoundedRectangle (headerBg.reduced (0.5f), 12.0f, 1.0f);
+    }
+
+    bounds.removeFromTop (5);
+
+    // Effect parameters section at bottom (no title)
     auto paramArea = bounds.removeFromBottom (100).reduced (5);
-    drawSection (paramArea, "EFFECT PARAMETERS");
-
+    drawPanel (paramArea, "", false);
     bounds.removeFromBottom (5);
 
-    // Effects chain row
-    auto effectsArea = bounds.removeFromBottom (55).reduced (5);
-    drawSection (effectsArea, "EFFECTS CHAIN");
-
+    // Effects chain row (no title, taller buttons)
+    auto effectsArea = bounds.removeFromBottom (70).reduced (5);
+    drawPanel (effectsArea, "", false);
     bounds.removeFromBottom (5);
 
     // Two main columns
-    int columnWidth = (bounds.getWidth() - 10) / 2;
+    const int columnWidth = (bounds.getWidth() - 10) / 2;
 
-    // Drone & Pitch section (left column)
-    drawSection (bounds.removeFromLeft (columnWidth).reduced (5), "DRONE & PITCH");
+    auto left = bounds.removeFromLeft (columnWidth).reduced (5);
+    drawPanel (left, "Drone");
     bounds.removeFromLeft (10);
 
-    // Loops section (right column)
-    drawSection (bounds.reduced (5), "LOOPS");
+    auto right = bounds.reduced (5);
+    drawPanel (right, "Loops");
 
-    // Input/Output meters
-    int meterY = 10;
-    int meterHeight = 12;
+    // Draw rotated labels for drone knobs
+    g.setColour (juce::Colours::lightgrey);
+    g.setFont (juce::Font (10.0f));
 
-    g.setColour (juce::Colours::grey.darker());
-    g.fillRoundedRectangle (15.0f, (float)meterY, 150.0f, (float)meterHeight, 3.0f);
-    g.setColour (juce::Colours::limegreen);
-    const float inLevel = juce::jlimit (0.0f, 1.0f, inputLevel.load());
-    g.fillRoundedRectangle (15.0f, (float)meterY, 150.0f * inLevel, (float)meterHeight, 3.0f);
-    g.setColour (juce::Colours::white);
-    g.setFont (10.0f);
-    g.drawText ("IN", 15, meterY, 150, meterHeight, juce::Justification::centred);
+    auto drawRotatedLabel = [&g](const juce::Label& label) {
+        if (label.getText().isEmpty()) return;
+        auto bounds = label.getBounds();
 
-    meterY += meterHeight + 3;
-    g.setColour (juce::Colours::grey.darker());
-    g.fillRoundedRectangle (15.0f, (float)meterY, 150.0f, (float)meterHeight, 3.0f);
-    g.setColour (juce::Colours::cyan);
-    const float outLevel = juce::jlimit (0.0f, 1.0f, outputLevel.load());
-    g.fillRoundedRectangle (15.0f, (float)meterY, 150.0f * outLevel, (float)meterHeight, 3.0f);
-    g.setColour (juce::Colours::white);
-    g.drawText ("OUT", 15, meterY, 150, meterHeight, juce::Justification::centred);
+        // Save graphics state
+        g.saveState();
+
+        // Move to center of label area, rotate, then draw
+        float cx = bounds.getCentreX();
+        float cy = bounds.getCentreY();
+
+        g.addTransform (juce::AffineTransform::rotation (-juce::MathConstants<float>::halfPi, cx, cy));
+
+        // Draw text centered in the rotated space
+        g.drawText (label.getText(),
+                    bounds.getX() - (bounds.getHeight() - bounds.getWidth()) / 2,
+                    bounds.getY() + (bounds.getHeight() - bounds.getWidth()) / 2,
+                    bounds.getHeight(), bounds.getWidth(),
+                    juce::Justification::centred, false);
+
+        g.restoreState();
+    };
+
+    // Drone section rotated labels
+    drawRotatedLabel (dryWetLabel);
+    drawRotatedLabel (smoothingLabel);
+    drawRotatedLabel (thresholdLabel);
+    drawRotatedLabel (tiltLabel);
+    drawRotatedLabel (delayLabel);
+    drawRotatedLabel (decayLabel);
+    drawRotatedLabel (historyLabel);
+    drawRotatedLabel (stereoWidthLabel);
+    drawRotatedLabel (pitchLabel);
+    drawRotatedLabel (octaveLabel);
+    drawRotatedLabel (loopMixLabel);
+
+    // Input / Output meters inside the header strip (left side)
+    {
+        const int meterX = 16;
+        int meterY = 14;
+        const int meterW = 140;
+        const int meterH = 10;
+        const int gap = 6;
+
+        auto drawMeter = [&](const juce::String& label, float value, juce::Colour colour)
+        {
+            auto bg = juce::Rectangle<float> ((float) meterX, (float) meterY, (float) meterW, (float) meterH);
+            g.setColour (juce::Colours::white.withAlpha (0.06f));
+            g.fillRoundedRectangle (bg, 4.0f);
+
+            const float v = juce::jlimit (0.0f, 1.0f, value);
+            auto fg = bg.withWidth (bg.getWidth() * v);
+
+            g.setColour (colour.withAlpha (0.85f));
+            g.fillRoundedRectangle (fg, 4.0f);
+
+            g.setColour (juce::Colours::white.withAlpha (0.60f));
+            g.setFont (juce::Font (10.0f, juce::Font::bold));
+            g.drawText (label, meterX, meterY - 1, 30, meterH + 2, juce::Justification::centredLeft, false);
+
+            meterY += meterH + gap;
+        };
+
+        drawMeter ("IN",  inputLevel.load(),  juce::Colour (0xff5dd6c6));
+        drawMeter ("OUT", outputLevel.load(), juce::Colour (0xff7aa7ff));
+    }
 }
 
 void MainComponent::resized()
@@ -660,51 +788,55 @@ void MainComponent::resized()
 
     bounds.removeFromTop (5);
 
-    // Effect parameters section at bottom
+    // Effect parameters section at bottom - 8 fixed slots
     auto paramArea = bounds.removeFromBottom (100).reduced (5);
-    paramArea.removeFromTop (25);  // Title space
+    paramArea.removeFromTop (8);  // Small top padding
 
-    // Layout parameter knobs horizontally
-    const int paramKnobSize = 55;
-    const int paramLabelHeight = 14;
-    int totalParamWidth = numActiveKnobs * (paramKnobSize + 5) + numActiveCombos * 70 + numActiveToggles * 80;
-    int paramStartX = paramArea.getX() + (paramArea.getWidth() - totalParamWidth) / 2;
+    // Always divide into 8 equal slots for physical knob mapping
+    const int numSlots = 8;
+    const int slotWidth = paramArea.getWidth() / numSlots;
+    const int knobSize = 55;
+    const int labelHeight = 14;
 
-    int paramX = paramStartX;
-    for (int i = 0; i < numActiveKnobs; ++i)
+    // Position knobs in their fixed slots
+    for (int i = 0; i < numActiveKnobs && i < numSlots; ++i)
     {
-        paramLabels[i].setBounds (paramX, paramArea.getY(), paramKnobSize, paramLabelHeight);
-        paramKnobs[i].setBounds (paramX, paramArea.getY() + paramLabelHeight, paramKnobSize, paramArea.getHeight() - paramLabelHeight - 5);
-        paramX += paramKnobSize + 5;
+        int slotX = paramArea.getX() + i * slotWidth + (slotWidth - knobSize) / 2;
+        paramLabels[i].setBounds (slotX, paramArea.getY(), knobSize, labelHeight);
+        paramKnobs[i].setBounds (slotX, paramArea.getY() + labelHeight, knobSize, paramArea.getHeight() - labelHeight - 5);
     }
 
-    for (int i = 0; i < numActiveCombos; ++i)
+    // Position combos after knobs in their slots
+    for (int i = 0; i < numActiveCombos && (numActiveKnobs + i) < numSlots; ++i)
     {
-        paramComboLabels[i].setBounds (paramX, paramArea.getY(), 65, paramLabelHeight);
-        paramCombos[i].setBounds (paramX, paramArea.getY() + paramLabelHeight + 20, 65, 22);
-        paramX += 70;
+        int slot = numActiveKnobs + i;
+        int slotX = paramArea.getX() + slot * slotWidth + (slotWidth - 65) / 2;
+        paramComboLabels[i].setBounds (slotX, paramArea.getY(), 65, labelHeight);
+        paramCombos[i].setBounds (slotX, paramArea.getY() + labelHeight + 15, 65, 22);
     }
 
-    for (int i = 0; i < numActiveToggles; ++i)
+    // Position toggles after combos in their slots
+    for (int i = 0; i < numActiveToggles && (numActiveKnobs + numActiveCombos + i) < numSlots; ++i)
     {
-        paramToggles[i].setBounds (paramX, paramArea.getY() + paramLabelHeight + 20, 75, 22);
-        paramX += 80;
+        int slot = numActiveKnobs + numActiveCombos + i;
+        int slotX = paramArea.getX() + slot * slotWidth + (slotWidth - 75) / 2;
+        paramToggles[i].setBounds (slotX, paramArea.getY() + labelHeight + 15, 75, 22);
     }
 
     bounds.removeFromBottom (5);
 
-    // Effects chain row
-    auto effectsArea = bounds.removeFromBottom (55).reduced (5);
-    effectsArea.removeFromTop (25);  // Title space
+    // Effects chain row (no title, taller buttons)
+    auto effectsArea = bounds.removeFromBottom (70).reduced (5);
+    effectsArea.removeFromTop (8);  // Small top padding
 
     // Move buttons on left - same size
-    const int moveButtonSize = 25;
+    const int moveButtonSize = 30;
     moveLeftButton.setBounds (effectsArea.removeFromLeft (moveButtonSize).reduced (2));
     effectsArea.removeFromLeft (3);
     moveRightButton.setBounds (effectsArea.removeFromLeft (moveButtonSize).reduced (2));
     effectsArea.removeFromLeft (10);
 
-    // Effect buttons
+    // Effect buttons (taller - about double height)
     const int effectWidth = (effectsArea.getWidth() - 10) / 6;
     for (int i = 0; i < 6; ++i)
     {
@@ -713,10 +845,8 @@ void MainComponent::resized()
 
     bounds.removeFromBottom (5);
 
-    // Two main columns
+    // Two main columns (knobSize and labelHeight already defined above)
     int columnWidth = (bounds.getWidth() - 10) / 2;
-    const int knobSize = 55;
-    const int labelHeight = 14;
 
     auto layoutKnobWithLabel = [&](juce::Slider& knob, juce::Label& label, juce::Rectangle<int>& area) {
         auto knobArea = area.removeFromLeft (knobSize + 4);
@@ -724,84 +854,105 @@ void MainComponent::resized()
         knob.setBounds (knobArea.reduced (2));
     };
 
-    // ===== DRONE & PITCH SECTION (left column) =====
+    // ===== DRONE SECTION (left column) =====
     auto droneArea = bounds.removeFromLeft (columnWidth).reduced (5);
     droneArea.removeFromTop (25);  // Title space
 
-    auto droneRow1 = droneArea.removeFromTop (knobSize + labelHeight + 5);
-    layoutKnobWithLabel (dryWetKnob, dryWetLabel, droneRow1);
-    layoutKnobWithLabel (smoothingKnob, smoothingLabel, droneRow1);
-    layoutKnobWithLabel (thresholdKnob, thresholdLabel, droneRow1);
-    layoutKnobWithLabel (tiltKnob, tiltLabel, droneRow1);
+    // Layout with rotated labels to the left of knobs
+    const int rotatedLabelWidth = 50;  // Width for rotated label area
+    const int knobWithLabel = rotatedLabelWidth + knobSize;
 
-    auto droneRow2 = droneArea.removeFromTop (knobSize + labelHeight + 5);
-    layoutKnobWithLabel (delayKnob, delayLabel, droneRow2);
-    layoutKnobWithLabel (decayKnob, decayLabel, droneRow2);
-    layoutKnobWithLabel (historyKnob, historyLabel, droneRow2);
-    layoutKnobWithLabel (stereoWidthKnob, stereoWidthLabel, droneRow2);
+    // Calculate equal spacing for 4 knobs per row
+    const int numKnobsPerRow = 4;
+    int droneSpacing = (droneArea.getWidth() - (numKnobsPerRow * knobWithLabel)) / (numKnobsPerRow + 1);
+
+    auto layoutRotatedKnobs = [&](juce::Rectangle<int>& rowArea, std::initializer_list<std::pair<juce::Slider*, juce::Label*>> knobs) {
+        int x = rowArea.getX() + droneSpacing;
+        for (auto& [knob, label] : knobs)
+        {
+            // Label to the left of knob (will be drawn rotated in paint)
+            label->setBounds (x, rowArea.getY(), rotatedLabelWidth, knobSize);
+            knob->setBounds (x + rotatedLabelWidth, rowArea.getY(), knobSize, knobSize);
+            x += knobWithLabel + droneSpacing;
+        }
+    };
+
+    auto droneRow1 = droneArea.removeFromTop (knobSize + 5);
+    layoutRotatedKnobs (droneRow1, {{&dryWetKnob, &dryWetLabel}, {&smoothingKnob, &smoothingLabel},
+                                     {&thresholdKnob, &thresholdLabel}, {&tiltKnob, &tiltLabel}});
+
+    auto droneRow2 = droneArea.removeFromTop (knobSize + 5);
+    layoutRotatedKnobs (droneRow2, {{&delayKnob, &delayLabel}, {&decayKnob, &decayLabel},
+                                     {&historyKnob, &historyLabel}, {&stereoWidthKnob, &stereoWidthLabel}});
 
     droneArea.removeFromTop (3);
-    peakToggle.setBounds (droneArea.removeFromTop (18).removeFromLeft (100));
-    droneArea.removeFromTop (2);
-    phaseToggle.setBounds (droneArea.removeFromTop (18).removeFromLeft (120));
+    auto toggleRow = droneArea.removeFromTop (20);
+    int toggleSpacing = (droneArea.getWidth() - 220) / 3;
+    peakToggle.setBounds (toggleRow.getX() + toggleSpacing, toggleRow.getY(), 100, 18);
+    phaseToggle.setBounds (toggleRow.getX() + toggleSpacing + 110, toggleRow.getY(), 120, 18);
 
-    // Pitch controls below drone
+    // Pitch controls + Live/Loop mix knob on same row
     droneArea.removeFromTop (5);
-    auto pitchRow = droneArea.removeFromTop (knobSize + labelHeight + 5);
-    layoutKnobWithLabel (pitchKnob, pitchLabel, pitchRow);
-    layoutKnobWithLabel (octaveKnob, octaveLabel, pitchRow);
+    auto pitchRow = droneArea.removeFromTop (knobSize + labelHeight + 18);  // Extra for value display
+    int pitchSpacing = (droneArea.getWidth() - 3 * knobWithLabel) / 4;
+    int pitchX = pitchRow.getX() + pitchSpacing;
+
+    // Semitones (with value display)
+    pitchLabel.setBounds (pitchX, pitchRow.getY(), rotatedLabelWidth, knobSize);
+    pitchKnob.setBounds (pitchX + rotatedLabelWidth, pitchRow.getY(), knobSize, knobSize + labelHeight + 4);
+    pitchX += knobWithLabel + pitchSpacing;
+
+    // Octaves (with value display)
+    octaveLabel.setBounds (pitchX, pitchRow.getY(), rotatedLabelWidth, knobSize);
+    octaveKnob.setBounds (pitchX + rotatedLabelWidth, pitchRow.getY(), knobSize, knobSize + labelHeight + 4);
+    pitchX += knobWithLabel + pitchSpacing;
+
+    // Live/Loop mix (no value display)
+    loopMixLabel.setBounds (pitchX, pitchRow.getY(), rotatedLabelWidth, knobSize);
+    loopMixKnob.setBounds (pitchX + rotatedLabelWidth, pitchRow.getY(), knobSize, knobSize);
 
     bounds.removeFromLeft (10);
 
     // ===== LOOPS SECTION (right column) =====
     auto loopsArea = bounds.reduced (5);
-    loopsArea.removeFromTop (25);  // Title space
 
-    // Live/Loop level knobs centered at top
-    auto loopsRow1 = loopsArea.removeFromTop (knobSize + labelHeight + 5);
-    int mixKnobsWidth = (knobSize + 4) * 2;
-    loopsRow1.removeFromLeft ((loopsRow1.getWidth() - mixKnobsWidth) / 2);
-    layoutKnobWithLabel (liveLevelKnob, liveLevelLabel, loopsRow1);
-    layoutKnobWithLabel (loopLevelKnob, loopLevelLabel, loopsRow1);
+    // Title row with Clear All button on right
+    auto loopsTitleRow = loopsArea.removeFromTop (25);
+    clearLoopsButton.setBounds (loopsTitleRow.removeFromRight (70).reduced (2, 3));
 
-    loopsArea.removeFromTop (10);
+    loopsArea.removeFromTop (5);
 
-    // Per-loop controls - 4 horizontal strips
+    // Per-loop controls - 4 horizontal strips (more vertical space now)
     const int loopStripWidth = loopsArea.getWidth() / 4;
     const int smallKnob = 40;
 
     for (int i = 0; i < 4; ++i)
     {
-        auto strip = loopsArea.removeFromLeft (loopStripWidth).reduced (5, 0);
-        int stripTop = strip.getY();
+        auto strip = loopsArea.removeFromLeft (loopStripWidth).reduced (3, 0);
 
         // Loop button at top
         loopButtons[i].setBounds (strip.removeFromTop (28).reduced (2, 0));
-        strip.removeFromTop (5);
+        strip.removeFromTop (3);
 
-        // Volume knob
-        loopVolumeLabels[i].setBounds (strip.removeFromTop (12));
-        loopVolumeSliders[i].setBounds (strip.removeFromTop (smallKnob).reduced (4, 0));
-        strip.removeFromTop (2);
+        // Pitch selector directly under button (no label)
+        loopPitchLabels[i].setVisible (false);
+        loopPitchCombos[i].setBounds (strip.removeFromTop (24).reduced (4, 0));
+        strip.removeFromTop (5);
 
         // HP knob
         loopHPLabels[i].setBounds (strip.removeFromTop (12));
-        loopHPSliders[i].setBounds (strip.removeFromTop (smallKnob).reduced (4, 0));
+        loopHPSliders[i].setBounds (strip.removeFromTop (smallKnob).reduced (6, 0));
         strip.removeFromTop (2);
 
         // LP knob
         loopLPLabels[i].setBounds (strip.removeFromTop (12));
-        loopLPSliders[i].setBounds (strip.removeFromTop (smallKnob).reduced (4, 0));
-        strip.removeFromTop (2);
+        loopLPSliders[i].setBounds (strip.removeFromTop (smallKnob).reduced (6, 0));
+        strip.removeFromTop (5);
 
-        // Pitch selector
-        loopPitchLabels[i].setBounds (strip.removeFromTop (12));
-        loopPitchCombos[i].setBounds (strip.removeFromTop (20).reduced (2, 0));
+        // Volume slider (vertical) - takes remaining space (taller now)
+        loopVolumeLabels[i].setBounds (strip.removeFromTop (12));
+        loopVolumeSliders[i].setBounds (strip.reduced (12, 0));
     }
-
-    // Clear button centered at bottom
-    auto clearArea = loopsArea.removeFromBottom (30);
-    clearLoopsButton.setBounds (clearArea.withSizeKeepingCentre (80, 25));
 }
 
 void MainComponent::audioDeviceAboutToStart (juce::AudioIODevice* device)
@@ -879,25 +1030,26 @@ void MainComponent::audioDeviceIOCallbackWithContext (const float* const* inputC
     const float width = stereoWidth.load();
     const bool isRecording = loopRecorder.isRecording();
     const bool hasLoops = loopRecorder.hasAnyContent();
-    const float liveLvl = liveLevel.load();
-    const float loopLvl = loopLevel.load();
+    const float mix = loopMix.load();  // 0 = live only, 1 = loops only
 
     if (activeInputs > 0 || hasLoops)
     {
         for (int i = 0; i < numSamples; ++i)
         {
             float fftInput = 0.0f;
+            float liveSample = 0.0f;
 
             if (activeInputs > 0)
             {
-                float liveSample = mono[i];
+                liveSample = mono[i];
                 if (isRecording)
                     loopRecorder.recordSample (liveSample);
-                fftInput += liveSample * liveLvl;
             }
 
-            if (hasLoops)
-                fftInput += loopRecorder.getLoopMix() * loopLvl;
+            float loopSample = hasLoops ? loopRecorder.getLoopMix() : 0.0f;
+
+            // Crossfade between live and loops based on mix
+            fftInput = liveSample * (1.0f - mix) + loopSample * mix;
 
             float outL, outR;
             if (width < 0.01f)
@@ -952,7 +1104,7 @@ void MainComponent::timerCallback()
         }
         else
         {
-            buttonColour = juce::Colours::darkgrey;
+            buttonColour = juce::Colour (0xff2a2b31);
         }
 
         loopButtons[i].setColour (juce::TextButton::buttonColourId, buttonColour);
@@ -960,3 +1112,4 @@ void MainComponent::timerCallback()
 
     repaint();
 }
+    
