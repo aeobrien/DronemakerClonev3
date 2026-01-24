@@ -51,7 +51,7 @@ private:
     float flutterRate = 6.0f;   // Hz (2-15)
     float flutterDepth = 0.0f;
     float hfLoss = 0.3f;
-    float dryWet = 1.0f;
+    float dryWet = 0.0f;  // Fully dry by default
 
     // Wow/flutter LFOs
     float wowPhase = 0.0f;

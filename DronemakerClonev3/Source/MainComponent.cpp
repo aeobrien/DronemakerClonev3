@@ -53,6 +53,47 @@ MainComponent::MainComponent()
     };
     addAndMakeVisible (resourcesButton);
 
+    // Master bypass button (starts active/red since bypass is on by default)
+    bypassButton.setColour (juce::TextButton::buttonColourId, juce::Colours::red);
+    bypassButton.onClick = [this] {
+        bool newState = !masterBypass.load();
+        masterBypass.store (newState);
+        bypassButton.setColour (juce::TextButton::buttonColourId,
+                                 newState ? juce::Colours::red : juce::Colour (0xff2a2b31));
+    };
+    addAndMakeVisible (bypassButton);
+
+    // MIDI Learn button
+    midiLearnButton.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff2a2b31));
+    midiLearnButton.onClick = [this] {
+        toggleMidiLearnMode();
+    };
+    addAndMakeVisible (midiLearnButton);
+
+    // Master volume knob
+    masterVolumeKnob.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+    masterVolumeKnob.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    masterVolumeKnob.setRange (0.0, 1.5, 0.01);  // Allow boost up to 150%
+    masterVolumeKnob.setValue (1.0);
+    masterVolumeKnob.onValueChange = [this] {
+        masterVolume.store ((float) masterVolumeKnob.getValue());
+    };
+    masterVolumeKnob.onDragStart = [this]() {
+        if (midiLearnActive.load())
+            selectControlForMidiLearn (&masterVolumeKnob);
+    };
+    addAndMakeVisible (masterVolumeKnob);
+    masterVolumeLabel.setText ("Master", juce::dontSendNotification);
+    masterVolumeLabel.setVisible (false);  // Will be drawn rotated
+
+    // Enable MIDI input for all available devices
+    auto midiInputs = juce::MidiInput::getAvailableDevices();
+    for (const auto& input : midiInputs)
+    {
+        deviceManager.setMidiInputDeviceEnabled (input.identifier, true);
+        deviceManager.addMidiInputDeviceCallback (input.identifier, this);
+    }
+
     // ===== DRONE SECTION =====
     // Helper for knobs with rotated labels (no value display)
     // Labels will be drawn rotated in paint(), so we don't make them visible
@@ -62,6 +103,13 @@ MainComponent::MainComponent()
         knob.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
         knob.setRange (min, max, step);
         knob.setValue (initial);
+
+        // MIDI learn click support
+        knob.onDragStart = [this, &knob]() {
+            if (midiLearnActive.load())
+                selectControlForMidiLearn (&knob);
+        };
+
         addAndMakeVisible (knob);
 
         // Store label text but don't show it - we'll draw it rotated
@@ -151,6 +199,10 @@ MainComponent::MainComponent()
         fftProcessorL.setPitchShiftSemitones (v);
         fftProcessorR.setPitchShiftSemitones (v);
     };
+    pitchKnob.onDragStart = [this]() {
+        if (midiLearnActive.load())
+            selectControlForMidiLearn (&pitchKnob);
+    };
     addAndMakeVisible (pitchKnob);
     pitchLabel.setText ("Semitones", juce::dontSendNotification);
     pitchLabel.setVisible (false);  // Will be drawn rotated
@@ -165,6 +217,10 @@ MainComponent::MainComponent()
         fftProcessorL.setPitchShiftOctaves (v);
         fftProcessorR.setPitchShiftOctaves (v);
     };
+    octaveKnob.onDragStart = [this]() {
+        if (midiLearnActive.load())
+            selectControlForMidiLearn (&octaveKnob);
+    };
     addAndMakeVisible (octaveKnob);
     octaveLabel.setText ("Octaves", juce::dontSendNotification);
     octaveLabel.setVisible (false);  // Will be drawn rotated
@@ -176,6 +232,10 @@ MainComponent::MainComponent()
     loopMixKnob.setValue (0.0);
     loopMixKnob.onValueChange = [this] {
         loopMix.store ((float) loopMixKnob.getValue());
+    };
+    loopMixKnob.onDragStart = [this]() {
+        if (midiLearnActive.load())
+            selectControlForMidiLearn (&loopMixKnob);
     };
     addAndMakeVisible (loopMixKnob);
     loopMixLabel.setText ("Live/Loop", juce::dontSendNotification);
@@ -193,6 +253,10 @@ MainComponent::MainComponent()
         loopVolumeSliders[i].setValue (1.0);
         loopVolumeSliders[i].onValueChange = [this, i] {
             loopRecorder.setSlotVolume (i, (float) loopVolumeSliders[i].getValue());
+        };
+        loopVolumeSliders[i].onDragStart = [this, i]() {
+            if (midiLearnActive.load())
+                selectControlForMidiLearn (&loopVolumeSliders[i]);
         };
         addAndMakeVisible (loopVolumeSliders[i]);
 
@@ -212,6 +276,10 @@ MainComponent::MainComponent()
             loopRecorder.setSlotHighPass (i, (float) loopHPSliders[i].getValue());
             int freq = (int) loopHPSliders[i].getValue();
             loopHPLabels[i].setText (juce::String (freq) + " Hz", juce::dontSendNotification);
+        };
+        loopHPSliders[i].onDragStart = [this, i]() {
+            if (midiLearnActive.load())
+                selectControlForMidiLearn (&loopHPSliders[i]);
         };
         addAndMakeVisible (loopHPSliders[i]);
 
@@ -234,6 +302,10 @@ MainComponent::MainComponent()
                 loopLPLabels[i].setText (juce::String (freq / 1000.0f, 1) + "k", juce::dontSendNotification);
             else
                 loopLPLabels[i].setText (juce::String (freq) + " Hz", juce::dontSendNotification);
+        };
+        loopLPSliders[i].onDragStart = [this, i]() {
+            if (midiLearnActive.load())
+                selectControlForMidiLearn (&loopLPSliders[i]);
         };
         addAndMakeVisible (loopLPSliders[i]);
 
@@ -264,6 +336,13 @@ MainComponent::MainComponent()
         loopButtons[i].setButtonText ("Loop " + juce::String (i + 1));
         loopButtons[i].setColour (juce::TextButton::buttonColourId, juce::Colour (0xff2a2b31));
         loopButtons[i].onClick = [this, i] {
+            // In MIDI learn mode, select this button for mapping
+            if (midiLearnActive.load())
+            {
+                selectLoopButtonForMidiLearn (i);
+                return;
+            }
+
             if (loopRecorder.isRecording() && loopRecorder.getRecordingSlot() == i)
                 loopRecorder.stopRecording();
             else if (loopRecorder.isSlotActive (i))
@@ -339,6 +418,15 @@ MainComponent::MainComponent()
         paramKnobs[i].setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
         paramKnobs[i].setTextBoxStyle (juce::Slider::TextBoxBelow, false, 50, 14);
         paramKnobs[i].setVisible (false);
+
+        // Capture index for MIDI learn click handling
+        paramKnobs[i].onDragStart = [this, i]() {
+            if (midiLearnActive.load())
+            {
+                selectControlForMidiLearn (&paramKnobs[i]);
+            }
+        };
+
         addAndMakeVisible (paramKnobs[i]);
 
         paramLabels[i].setJustificationType (juce::Justification::centred);
@@ -375,6 +463,11 @@ MainComponent::~MainComponent()
 {
     setLookAndFeel (nullptr);
     lookAndFeel.reset();
+
+    // Clean up MIDI callbacks
+    auto midiInputs = juce::MidiInput::getAvailableDevices();
+    for (const auto& input : midiInputs)
+        deviceManager.removeMidiInputDeviceCallback (input.identifier, this);
 
     deviceManager.removeAudioCallback (this);
 }
@@ -743,6 +836,9 @@ void MainComponent::paint (juce::Graphics& g)
     drawRotatedLabel (octaveLabel);
     drawRotatedLabel (loopMixLabel);
 
+    // Master volume label (also rotated)
+    drawRotatedLabel (masterVolumeLabel);
+
     // Input / Output meters inside the header strip (left side)
     {
         const int meterX = 16;
@@ -782,9 +878,23 @@ void MainComponent::resized()
     // Header row
     auto header = bounds.removeFromTop (35);
     header.removeFromLeft (170);  // Space for meters
+
+    // Right side buttons
     resourcesButton.setBounds (header.removeFromRight (80));
     header.removeFromRight (5);
     settingsButton.setBounds (header.removeFromRight (70));
+    header.removeFromRight (5);
+    midiLearnButton.setBounds (header.removeFromRight (85));
+    header.removeFromRight (5);
+    bypassButton.setBounds (header.removeFromRight (60));
+    header.removeFromRight (10);
+
+    // Master volume knob (with rotated label space to the left)
+    const int masterKnobSize = 32;
+    const int masterLabelWidth = 45;
+    int masterX = header.getRight() - masterKnobSize - masterLabelWidth - 5;
+    masterVolumeLabel.setBounds (masterX, header.getY(), masterLabelWidth, masterKnobSize);
+    masterVolumeKnob.setBounds (masterX + masterLabelWidth, header.getY() + 2, masterKnobSize, masterKnobSize);
 
     bounds.removeFromTop (5);
 
@@ -1031,6 +1141,21 @@ void MainComponent::audioDeviceIOCallbackWithContext (const float* const* inputC
     const bool isRecording = loopRecorder.isRecording();
     const bool hasLoops = loopRecorder.hasAnyContent();
     const float mix = loopMix.load();  // 0 = live only, 1 = loops only
+    const bool bypassed = masterBypass.load();
+    const float volume = masterVolume.load();
+
+    // Master bypass - just pass through silence (or could pass through dry input)
+    if (bypassed)
+    {
+        // Still update loop recording if active
+        if (isRecording && activeInputs > 0)
+        {
+            for (int i = 0; i < numSamples; ++i)
+                loopRecorder.recordSample (mono[i]);
+        }
+        outputLevel.store (0.0f);
+        return;
+    }
 
     if (activeInputs > 0 || hasLoops)
     {
@@ -1067,6 +1192,11 @@ void MainComponent::audioDeviceIOCallbackWithContext (const float* const* inputC
             }
 
             effectsChain.processSample (outL, outR);
+
+            // Apply master volume
+            outL *= volume;
+            outR *= volume;
+
             outputSum += outL * outL + outR * outR;
 
             if (numOutputChannels >= 1 && outputChannelData[0] != nullptr)
@@ -1087,11 +1217,19 @@ void MainComponent::audioDeviceIOCallbackWithContext (const float* const* inputC
 
 void MainComponent::timerCallback()
 {
+    bool learnMode = midiLearnActive.load();
+    bool hasSelection = midiLearnHasSelection.load();
+
     for (int i = 0; i < 4; ++i)
     {
         juce::Colour buttonColour;
 
-        if (loopRecorder.isRecording() && loopRecorder.getRecordingSlot() == i)
+        // In MIDI learn mode with this button selected
+        if (learnMode && hasSelection && midiLearnSelected.type == MidiMapping::LoopButton && midiLearnSelected.targetIndex == i)
+        {
+            buttonColour = juce::Colour (0xffff9900);  // Orange for selected
+        }
+        else if (loopRecorder.isRecording() && loopRecorder.getRecordingSlot() == i)
         {
             static int pulseCounter = 0;
             pulseCounter = (pulseCounter + 1) % 15;
@@ -1110,6 +1248,185 @@ void MainComponent::timerCallback()
         loopButtons[i].setColour (juce::TextButton::buttonColourId, buttonColour);
     }
 
+    // Update MIDI learn button color
+    if (learnMode)
+    {
+        if (hasSelection)
+            midiLearnButton.setColour (juce::TextButton::buttonColourId, juce::Colour (0xffff9900));  // Orange when has selection
+        else
+            midiLearnButton.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff5dd6c6));  // Accent color when active
+    }
+    else
+    {
+        midiLearnButton.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff2a2b31));
+    }
+
     repaint();
+}
+
+void MainComponent::handleIncomingMidiMessage (juce::MidiInput* source,
+                                                const juce::MidiMessage& message)
+{
+    juce::ignoreUnused (source);
+
+    // All UI updates must happen on the message thread
+    // Copy the relevant data we need
+    const bool isCC = message.isController();
+    const bool isNoteOn = message.isNoteOn();
+    const int ccNumber = isCC ? message.getControllerNumber() : 0;
+    const int ccValue = isCC ? message.getControllerValue() : 0;
+    const int noteNumber = isNoteOn ? message.getNoteNumber() : 0;
+
+    // Post to message thread for processing
+    juce::MessageManager::callAsync ([this, isCC, isNoteOn, ccNumber, ccValue, noteNumber]()
+    {
+        // Handle MIDI learn mode - only if we have a selection
+        if (midiLearnActive.load() && midiLearnHasSelection.load())
+        {
+            if (isCC || isNoteOn)
+            {
+                processMidiLearn (isCC ? ccNumber : noteNumber, isNoteOn);
+            }
+            return;
+        }
+
+        // Handle CC messages for mapped knobs
+        if (isCC)
+        {
+            auto it = midiCCMappings.find (ccNumber);
+            if (it != midiCCMappings.end())
+            {
+                if (it->second.type == MidiMapping::Knob && it->second.knobPtr != nullptr)
+                {
+                    float normValue = ccValue / 127.0f;
+                    auto* knob = it->second.knobPtr;
+                    double range = knob->getMaximum() - knob->getMinimum();
+                    knob->setValue (knob->getMinimum() + normValue * range);
+                }
+                else if (it->second.type == MidiMapping::LoopButton)
+                {
+                    int loopIdx = it->second.targetIndex;
+                    if (loopIdx >= 0 && loopIdx < 4 && ccValue > 63)  // Trigger on value > 63
+                        loopButtons[loopIdx].triggerClick();
+                }
+                else if (it->second.type == MidiMapping::Button && it->second.buttonPtr != nullptr)
+                {
+                    if (ccValue > 63)
+                        it->second.buttonPtr->triggerClick();
+                }
+            }
+        }
+
+        // Handle note messages for buttons
+        if (isNoteOn)
+        {
+            auto it = midiNoteMappings.find (noteNumber);
+            if (it != midiNoteMappings.end())
+            {
+                if (it->second.type == MidiMapping::LoopButton)
+                {
+                    int loopIdx = it->second.targetIndex;
+                    if (loopIdx >= 0 && loopIdx < 4)
+                        loopButtons[loopIdx].triggerClick();
+                }
+                else if (it->second.type == MidiMapping::Button && it->second.buttonPtr != nullptr)
+                {
+                    it->second.buttonPtr->triggerClick();
+                }
+            }
+        }
+    });
+}
+
+void MainComponent::toggleMidiLearnMode()
+{
+    if (midiLearnActive.load())
+    {
+        exitMidiLearnMode();
+    }
+    else
+    {
+        midiLearnActive.store (true);
+        midiLearnHasSelection.store (false);
+        midiLearnSelected = MidiMapping();
+        midiLearnButton.setButtonText ("Select...");
+    }
+}
+
+void MainComponent::exitMidiLearnMode()
+{
+    midiLearnActive.store (false);
+    midiLearnHasSelection.store (false);
+    midiLearnSelected = MidiMapping();
+    midiLearnButton.setButtonText ("MIDI Learn");
+}
+
+void MainComponent::selectControlForMidiLearn (juce::Slider* knob)
+{
+    if (!midiLearnActive.load())
+        return;
+
+    clearMidiLearnSelection();
+
+    midiLearnSelected.type = MidiMapping::Knob;
+    midiLearnSelected.knobPtr = knob;
+    midiLearnHasSelection.store (true);
+    midiLearnButton.setButtonText ("Waiting...");
+}
+
+void MainComponent::selectLoopButtonForMidiLearn (int loopIndex)
+{
+    if (!midiLearnActive.load())
+        return;
+
+    clearMidiLearnSelection();
+
+    midiLearnSelected.type = MidiMapping::LoopButton;
+    midiLearnSelected.targetIndex = loopIndex;
+    midiLearnHasSelection.store (true);
+    midiLearnButton.setButtonText ("Loop " + juce::String (loopIndex + 1));
+}
+
+void MainComponent::selectButtonForMidiLearn (juce::Button* button)
+{
+    if (!midiLearnActive.load())
+        return;
+
+    clearMidiLearnSelection();
+
+    midiLearnSelected.type = MidiMapping::Button;
+    midiLearnSelected.buttonPtr = button;
+    midiLearnHasSelection.store (true);
+    midiLearnButton.setButtonText ("Waiting...");
+}
+
+void MainComponent::clearMidiLearnSelection()
+{
+    midiLearnSelected = MidiMapping();
+    midiLearnHasSelection.store (false);
+}
+
+void MainComponent::processMidiLearn (int ccOrNote, bool isNote)
+{
+    // This is called on the message thread
+    if (!midiLearnHasSelection.load())
+        return;
+
+    MidiMapping mapping = midiLearnSelected;
+
+    if (isNote)
+    {
+        // Notes can map to buttons (loop buttons or other buttons)
+        midiNoteMappings[ccOrNote] = mapping;
+    }
+    else
+    {
+        // CCs can map to anything
+        midiCCMappings[ccOrNote] = mapping;
+    }
+
+    // Clear selection but stay in learn mode
+    clearMidiLearnSelection();
+    midiLearnButton.setButtonText ("Select...");
 }
     

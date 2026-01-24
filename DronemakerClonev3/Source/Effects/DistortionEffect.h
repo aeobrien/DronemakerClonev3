@@ -42,7 +42,7 @@ private:
     int algorithm = 0;
     float drive = 1.0f;
     float tone = 0.5f;
-    float dryWet = 1.0f;
+    float dryWet = 0.0f;  // Fully dry by default
 
     // For bitcrush
     float bitDepth = 8.0f;

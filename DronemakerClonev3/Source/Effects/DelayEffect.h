@@ -36,7 +36,7 @@ private:
 
     float delayTimeMs = 250.0f;
     float feedback = 0.3f;
-    float dryWet = 0.5f;
+    float dryWet = 0.0f;  // Fully dry by default
     bool pingPong = false;
 
     // Feedback storage for ping-pong

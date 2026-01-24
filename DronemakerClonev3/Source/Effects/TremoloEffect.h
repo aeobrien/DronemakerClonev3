@@ -29,7 +29,7 @@ private:
     float phase = 0.0f;
 
     float rate = 4.0f;      // Hz
-    float depth = 0.5f;     // 0-1
+    float depth = 0.0f;     // 0-1, no tremolo by default
     int waveform = 0;       // 0=sine, 1=triangle, 2=square
     bool stereo = true;     // Phase offset between L/R
 

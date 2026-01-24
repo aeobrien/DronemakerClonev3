@@ -1,5 +1,6 @@
 #pragma once
 #include <JuceHeader.h>
+#include <map>
 #include "FFTProcessor.h"
 #include "LoopRecorder.h"
 #include "Effects/EffectsChain.h"
@@ -199,7 +200,7 @@ public:
             deviceManager,
             0, 1,        // input channels min/max
             0, 2,        // output channels min/max
-            false,       // show MIDI input (disabled)
+            true,        // show MIDI input (enabled for MIDI mapping)
             false,       // show MIDI output
             true,        // show sample rate
             true         // show buffer size
@@ -296,7 +297,8 @@ private:
 //==============================================================================
 class MainComponent  : public juce::Component,
                        public juce::AudioIODeviceCallback,
-                       public juce::Timer
+                       public juce::Timer,
+                       public juce::MidiInputCallback
 {
 public:
     MainComponent();
@@ -315,6 +317,10 @@ public:
                                            int numOutputChannels,
                                            int numSamples,
                                            const juce::AudioIODeviceCallbackContext&) override;
+
+    // MIDI input callback
+    void handleIncomingMidiMessage (juce::MidiInput* source,
+                                    const juce::MidiMessage& message) override;
 
 private:
     // Helper to create a rotary knob with label
@@ -338,6 +344,36 @@ private:
     // Header buttons
     juce::TextButton settingsButton { "Settings" };
     juce::TextButton resourcesButton { "Resources" };
+    juce::TextButton bypassButton { "Bypass" };
+    juce::TextButton midiLearnButton { "MIDI Learn" };
+
+    // Master controls
+    juce::Slider masterVolumeKnob;
+    juce::Label masterVolumeLabel;
+    std::atomic<float> masterVolume { 1.0f };
+    std::atomic<bool> masterBypass { true };  // Bypass enabled by default
+
+    // MIDI mapping
+    struct MidiMapping
+    {
+        enum TargetType { None, LoopButton, Knob, Button };
+        TargetType type = None;
+        int targetIndex = -1;  // Loop button 0-3, or button index
+        juce::Slider* knobPtr = nullptr;  // For knob mappings
+        juce::Button* buttonPtr = nullptr;  // For button mappings
+    };
+    std::map<int, MidiMapping> midiCCMappings;  // CC number -> mapping
+    std::map<int, MidiMapping> midiNoteMappings;  // Note number -> mapping (for buttons)
+    std::atomic<bool> midiLearnActive { false };
+    MidiMapping midiLearnSelected;  // Currently selected control for learning
+    std::atomic<bool> midiLearnHasSelection { false };
+    void toggleMidiLearnMode();
+    void exitMidiLearnMode();
+    void selectControlForMidiLearn (juce::Slider* knob);
+    void selectLoopButtonForMidiLearn (int loopIndex);
+    void selectButtonForMidiLearn (juce::Button* button);
+    void clearMidiLearnSelection();
+    void processMidiLearn (int ccOrNote, bool isNote);  // Called from message thread
 
     // Resource monitor
     std::unique_ptr<ResourceMonitor> resourceMonitor;

@@ -72,7 +72,7 @@ private:
     float pitchRatio = 1.0f;
     float density = 1.0f;
     float spread = 0.5f;
-    float dryWet = 0.5f;
+    float dryWet = 0.0f;  // Fully dry by default
 
     juce::Random random;
 
