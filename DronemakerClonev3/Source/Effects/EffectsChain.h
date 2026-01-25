@@ -58,6 +58,12 @@ public:
     DistortionEffect* getDistortion();
     TapeEffect* getTape();
 
+    // Apply modulation offsets from modulation manager
+    void setModulation (float delayTime, float delayFeedback, float delayDryWet,
+                        float distortionDrive, float distortionTone, float distortionDryWet,
+                        float tapeSaturation, float tapeBias, float tapeWowDepth, float tapeFlutterDepth, float tapeDryWet,
+                        float filterHP, float filterLP, float filterHarmonicIntensity);
+
 private:
     // Effects storage (fixed order by type)
     std::array<std::unique_ptr<EffectBase>, numEffects> effects;

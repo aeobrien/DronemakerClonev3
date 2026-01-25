@@ -9,8 +9,49 @@ FilterEffect::FilterEffect()
 void FilterEffect::prepareToPlay (double sr, int /*samplesPerBlock*/)
 {
     sampleRate = sr;
+
+    // Set up parameter smoothing
+    hpFreqSmooth.setSmoothingTime (sr, 20.0f);
+    lpFreqSmooth.setSmoothingTime (sr, 20.0f);
+    harmonicIntensitySmooth.setSmoothingTime (sr, 30.0f);
+    crossfadeSmooth.setSmoothingTime (sr, 100.0f);  // 100ms crossfade for scale/root changes
+
     reset();
     updateResonatorCoefficients();
+}
+
+void FilterEffect::setRootNote (int note)
+{
+    int newRoot = juce::jlimit (0, 11, note);
+    if (newRoot != rootNote)
+    {
+        // Copy current resonators to old bank for cross-fading
+        resonatorsOld = resonators;
+        numResonatorsOld = numResonators;
+        needsCrossfade = true;
+        crossfadeSmooth.setCurrentAndTarget (0.0f);
+        crossfadeSmooth.setTargetValue (1.0f);
+
+        rootNote = newRoot;
+        updateHarmonicFrequencies();
+    }
+}
+
+void FilterEffect::setScaleType (int type)
+{
+    int newType = juce::jlimit (0, 10, type);
+    if (newType != scaleType)
+    {
+        // Copy current resonators to old bank for cross-fading
+        resonatorsOld = resonators;
+        numResonatorsOld = numResonators;
+        needsCrossfade = true;
+        crossfadeSmooth.setCurrentAndTarget (0.0f);
+        crossfadeSmooth.setTargetValue (1.0f);
+
+        scaleType = newType;
+        updateHarmonicFrequencies();
+    }
 }
 
 void FilterEffect::reset()
@@ -25,6 +66,50 @@ void FilterEffect::reset()
         r.z1L = r.z2L = 0.0f;
         r.z1R = r.z2R = 0.0f;
     }
+
+    for (auto& r : resonatorsOld)
+    {
+        r.z1L = r.z2L = 0.0f;
+        r.z1R = r.z2R = 0.0f;
+    }
+
+    needsCrossfade = false;
+}
+
+float FilterEffect::processResonatorBank (std::array<Resonator, maxResonators>& bank, int count, float left, float right, float& outR)
+{
+    float harmonicL = 0.0f;
+    float harmonicR = 0.0f;
+
+    for (int i = 0; i < count; ++i)
+    {
+        auto& r = bank[i];
+
+        // Process left channel through biquad bandpass
+        float inL = left;
+        float outL = r.b0 * inL + r.b1 * r.z1L + r.b2 * r.z2L - r.a1 * r.z1L - r.a2 * r.z2L;
+        r.z2L = r.z1L;
+        r.z1L = outL;
+        harmonicL += outL;
+
+        // Process right channel through biquad bandpass
+        float inR = right;
+        float outRVal = r.b0 * inR + r.b1 * r.z1R + r.b2 * r.z2R - r.a1 * r.z1R - r.a2 * r.z2R;
+        r.z2R = r.z1R;
+        r.z1R = outRVal;
+        harmonicR += outRVal;
+    }
+
+    // Scale output (resonators have gain based on Q)
+    if (count > 0)
+    {
+        float scale = 2.0f / std::sqrt (static_cast<float> (count));
+        harmonicL *= scale;
+        harmonicR *= scale;
+    }
+
+    outR = harmonicR;
+    return harmonicL;
 }
 
 void FilterEffect::processSample (float& left, float& right)
@@ -33,6 +118,12 @@ void FilterEffect::processSample (float& left, float& right)
         return;
 
     const float pi = juce::MathConstants<float>::pi;
+
+    // Get smoothed parameter values
+    float hpFreq = hpFreqSmooth.getNextValue();
+    float lpFreq = lpFreqSmooth.getNextValue();
+    float harmonicIntensity = harmonicIntensitySmooth.getNextValue();
+    float crossfade = crossfadeSmooth.getNextValue();
 
     // High-pass filter (cascaded one-pole)
     float hpCoeff = 1.0f - std::exp (-2.0f * pi * hpFreq / static_cast<float> (sampleRate));
@@ -70,35 +161,31 @@ void FilterEffect::processSample (float& left, float& right)
     // Harmonic filter (if enabled)
     if (harmonicEnabled && harmonicIntensity > 0.0f)
     {
-        float harmonicL = 0.0f;
-        float harmonicR = 0.0f;
+        float harmonicL, harmonicR;
 
-        // Sum of resonant bandpass filters at scale frequencies
-        for (int i = 0; i < numResonators; ++i)
+        if (needsCrossfade && crossfade < 0.999f)
         {
-            auto& r = resonators[i];
+            // Cross-fade between old and new resonator banks
+            float oldR, newR;
+            float oldL = processResonatorBank (resonatorsOld, numResonatorsOld, left, right, oldR);
+            float newL = processResonatorBank (resonators, numResonators, left, right, newR);
 
-            // Process left channel through biquad bandpass
-            float inL = left;
-            float outL = r.b0 * inL + r.b1 * r.z1L + r.b2 * r.z2L - r.a1 * r.z1L - r.a2 * r.z2L;
-            r.z2L = r.z1L;
-            r.z1L = outL;
-            harmonicL += outL;
+            // Equal-power crossfade
+            float oldGain = std::sqrt (1.0f - crossfade);
+            float newGain = std::sqrt (crossfade);
 
-            // Process right channel through biquad bandpass
-            float inR = right;
-            float outR = r.b0 * inR + r.b1 * r.z1R + r.b2 * r.z2R - r.a1 * r.z1R - r.a2 * r.z2R;
-            r.z2R = r.z1R;
-            r.z1R = outR;
-            harmonicR += outR;
+            harmonicL = oldL * oldGain + newL * newGain;
+            harmonicR = oldR * oldGain + newR * newGain;
+
+            // Check if crossfade is complete
+            if (crossfade >= 0.999f)
+                needsCrossfade = false;
         }
-
-        // Scale output (resonators have gain based on Q)
-        if (numResonators > 0)
+        else
         {
-            float scale = 2.0f / std::sqrt (static_cast<float> (numResonators));
-            harmonicL *= scale;
-            harmonicR *= scale;
+            // Normal processing with just the current bank
+            harmonicL = processResonatorBank (resonators, numResonators, left, right, harmonicR);
+            needsCrossfade = false;
         }
 
         // Blend based on intensity

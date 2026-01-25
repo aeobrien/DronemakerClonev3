@@ -16,7 +16,7 @@
 class LoopRecorder
 {
 public:
-    static constexpr int numSlots = 4;
+    static constexpr int numSlots = 8;
     static constexpr int maxLoopSeconds = 300;  // Maximum possible (5 minutes)
 
     LoopRecorder();
@@ -41,6 +41,11 @@ public:
     void setSlotHighPass (int slot, float freqHz);
     void setSlotLowPass (int slot, float freqHz);
     void setSlotPitchOctave (int slot, int octave);  // -1, 0, or +1
+
+    // Modulation offsets (added to base parameters)
+    void setSlotVolumeMod (int slot, float mod);
+    void setSlotFilterHPMod (int slot, float mod);
+    void setSlotFilterLPMod (int slot, float mod);
 
     // State queries
     bool isSlotActive (int slot) const;
@@ -89,6 +94,11 @@ private:
         float hpFreq = 20.0f;        // High-pass cutoff Hz
         float lpFreq = 20000.0f;     // Low-pass cutoff Hz
         int pitchOctave = 0;         // -1, 0, or +1
+
+        // Modulation offsets
+        float volumeMod = 0.0f;      // Added to volume
+        float hpFreqMod = 0.0f;      // Added to hpFreq (in octaves, scaled)
+        float lpFreqMod = 0.0f;      // Added to lpFreq (in octaves, scaled)
 
         // Filter states (simple one-pole filters)
         float hpState = 0.0f;

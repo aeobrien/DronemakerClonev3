@@ -166,6 +166,24 @@ void LoopRecorder::setSlotPitchOctave (int slot, int octave)
         slots[slot].pitchOctave = juce::jlimit (-2, 2, octave);
 }
 
+void LoopRecorder::setSlotVolumeMod (int slot, float mod)
+{
+    if (slot >= 0 && slot < numSlots)
+        slots[slot].volumeMod = juce::jlimit (-1.0f, 1.0f, mod);
+}
+
+void LoopRecorder::setSlotFilterHPMod (int slot, float mod)
+{
+    if (slot >= 0 && slot < numSlots)
+        slots[slot].hpFreqMod = juce::jlimit (-1.0f, 1.0f, mod);
+}
+
+void LoopRecorder::setSlotFilterLPMod (int slot, float mod)
+{
+    if (slot >= 0 && slot < numSlots)
+        slots[slot].lpFreqMod = juce::jlimit (-1.0f, 1.0f, mod);
+}
+
 float LoopRecorder::getInterpolatedSample (const LoopSlot& slot, double position) const
 {
     if (slot.length <= 0)
@@ -210,19 +228,28 @@ float LoopRecorder::getLoopMix()
             // Read sample with interpolation
             float sample = getInterpolatedSample (slot, slot.playPosition);
 
+            // Calculate modulated filter frequencies
+            // Modulation is in octaves: mod of 1.0 = double freq, -1.0 = half freq
+            float modulatedHpFreq = slot.hpFreq * std::pow (2.0f, slot.hpFreqMod * 4.0f);  // ±4 octaves range
+            float modulatedLpFreq = slot.lpFreq * std::pow (2.0f, slot.lpFreqMod * 4.0f);
+            modulatedHpFreq = juce::jlimit (20.0f, 5000.0f, modulatedHpFreq);
+            modulatedLpFreq = juce::jlimit (200.0f, 20000.0f, modulatedLpFreq);
+
             // Apply high-pass filter (simple one-pole)
             // HP: output = input - lowpass(input)
-            float hpCoeff = 1.0f - std::exp (-2.0f * juce::MathConstants<float>::pi * slot.hpFreq / static_cast<float> (currentSampleRate));
+            float hpCoeff = 1.0f - std::exp (-2.0f * juce::MathConstants<float>::pi * modulatedHpFreq / static_cast<float> (currentSampleRate));
             slot.hpState += hpCoeff * (sample - slot.hpState);
             float hpOutput = sample - slot.hpState;
 
             // Apply low-pass filter (simple one-pole)
-            float lpCoeff = 1.0f - std::exp (-2.0f * juce::MathConstants<float>::pi * slot.lpFreq / static_cast<float> (currentSampleRate));
+            float lpCoeff = 1.0f - std::exp (-2.0f * juce::MathConstants<float>::pi * modulatedLpFreq / static_cast<float> (currentSampleRate));
             slot.lpState += lpCoeff * (hpOutput - slot.lpState);
             float filtered = slot.lpState;
 
-            // Apply volume AND automation level
-            mix += filtered * slot.volume * slot.automationLevel;
+            // Apply volume with modulation AND automation level
+            // Volume modulation adds to base volume (clamped to 0-1)
+            float modulatedVolume = juce::jlimit (0.0f, 1.0f, slot.volume + slot.volumeMod);
+            mix += filtered * modulatedVolume * slot.automationLevel;
             activeCount++;
 
             // Advance play position based on pitch

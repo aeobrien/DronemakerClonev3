@@ -70,12 +70,14 @@ MainComponent::MainComponent()
     };
     addAndMakeVisible (midiLearnButton);
 
-    // Tab buttons for Drone/Loops sections
+    // Tab buttons for Drone/Loops/Modulation sections
     auto updateTabColors = [this] {
         droneTabButton.setColour (juce::TextButton::buttonColourId,
             activeTab == 0 ? juce::Colour (0xff5dd6c6).withAlpha (0.3f) : juce::Colour (0xff2a2b31));
         loopsTabButton.setColour (juce::TextButton::buttonColourId,
             activeTab == 1 ? juce::Colour (0xff5dd6c6).withAlpha (0.3f) : juce::Colour (0xff2a2b31));
+        modulationTabButton.setColour (juce::TextButton::buttonColourId,
+            activeTab == 2 ? juce::Colour (0xff5dd6c6).withAlpha (0.3f) : juce::Colour (0xff2a2b31));
     };
 
     droneTabButton.onClick = [this, updateTabColors] {
@@ -92,7 +94,18 @@ MainComponent::MainComponent()
     };
     addAndMakeVisible (loopsTabButton);
 
+    modulationTabButton.onClick = [this, updateTabColors] {
+        activeTab = 2;
+        updateTabColors();
+        resized();
+    };
+    addAndMakeVisible (modulationTabButton);
+
     updateTabColors();  // Set initial colors
+
+    // Create modulation panel
+    modulationPanel = std::make_unique<ModulationPanel> (modulationManager);
+    addAndMakeVisible (modulationPanel.get());
 
     // Master volume knob
     masterVolumeKnob.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
@@ -268,7 +281,7 @@ MainComponent::MainComponent()
     // ===== LOOPS SECTION =====
 
     // Per-loop controls
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < 8; ++i)
     {
         // Volume slider (vertical slider)
         loopVolumeSliders[i].setSliderStyle (juce::Slider::LinearVertical);
@@ -498,7 +511,7 @@ MainComponent::MainComponent()
     }
 
     startTimerHz (30);
-    setSize (1000, 600);
+    setSize (1000, 700);
 
     // Initialize with Filter selected
     updateEffectButtonColors();
@@ -763,6 +776,229 @@ void MainComponent::updateEffectParameterKnobs()
     resized();
 }
 
+void MainComponent::updateEffectParameterModulation()
+{
+    if (selectedEffectSlot < 0)
+        return;
+
+    auto order = effectsChain.getOrder();
+    int effectType = order[selectedEffectSlot];
+
+    // Define which knobs map to which modulation targets for each effect
+    // The order must match the order knobs are added in updateEffectParameterKnobs()
+    switch (effectType)
+    {
+        case EffectsChain::Filter:
+        {
+            // HP Freq, HP Poles, LP Freq, LP Poles, Harmonic
+            if (numActiveKnobs > 0)
+            {
+                bool hpMod = modulationManager.isTargetModulated (ModulationTarget::Type::FilterHP);
+                if (hpMod)
+                {
+                    float val = modulationManager.getModulatedValue (ModulationTarget::Type::FilterHP);
+                    if (val >= 0.0f)
+                        paramKnobs[0].setValue (val, juce::dontSendNotification);
+                }
+                paramKnobs[0].setEnabled (!hpMod);
+            }
+            if (numActiveKnobs > 2)
+            {
+                bool lpMod = modulationManager.isTargetModulated (ModulationTarget::Type::FilterLP);
+                if (lpMod)
+                {
+                    float val = modulationManager.getModulatedValue (ModulationTarget::Type::FilterLP);
+                    if (val >= 0.0f)
+                        paramKnobs[2].setValue (val, juce::dontSendNotification);
+                }
+                paramKnobs[2].setEnabled (!lpMod);
+            }
+            if (numActiveKnobs > 4)
+            {
+                bool harmMod = modulationManager.isTargetModulated (ModulationTarget::Type::FilterHarmonicIntensity);
+                if (harmMod)
+                {
+                    float val = modulationManager.getModulatedValue (ModulationTarget::Type::FilterHarmonicIntensity);
+                    if (val >= 0.0f)
+                        paramKnobs[4].setValue (val, juce::dontSendNotification);
+                }
+                paramKnobs[4].setEnabled (!harmMod);
+            }
+            break;
+        }
+
+        case EffectsChain::Delay:
+        {
+            // Time, Feedback, Dry/Wet
+            if (numActiveKnobs > 0)
+            {
+                bool timeMod = modulationManager.isTargetModulated (ModulationTarget::Type::DelayTime);
+                if (timeMod)
+                {
+                    float val = modulationManager.getModulatedValue (ModulationTarget::Type::DelayTime);
+                    if (val >= 0.0f)
+                        paramKnobs[0].setValue (val, juce::dontSendNotification);
+                }
+                paramKnobs[0].setEnabled (!timeMod);
+            }
+            if (numActiveKnobs > 1)
+            {
+                bool fbMod = modulationManager.isTargetModulated (ModulationTarget::Type::DelayFeedback);
+                if (fbMod)
+                {
+                    float val = modulationManager.getModulatedValue (ModulationTarget::Type::DelayFeedback);
+                    if (val >= 0.0f)
+                        paramKnobs[1].setValue (val, juce::dontSendNotification);
+                }
+                paramKnobs[1].setEnabled (!fbMod);
+            }
+            if (numActiveKnobs > 2)
+            {
+                bool dwMod = modulationManager.isTargetModulated (ModulationTarget::Type::DelayDryWet);
+                if (dwMod)
+                {
+                    float val = modulationManager.getModulatedValue (ModulationTarget::Type::DelayDryWet);
+                    if (val >= 0.0f)
+                        paramKnobs[2].setValue (val, juce::dontSendNotification);
+                }
+                paramKnobs[2].setEnabled (!dwMod);
+            }
+            break;
+        }
+
+        case EffectsChain::Tremolo:
+        {
+            // Rate, Depth
+            if (numActiveKnobs > 0)
+            {
+                bool rateMod = modulationManager.isTargetModulated (ModulationTarget::Type::TremoloRate);
+                if (rateMod)
+                {
+                    float val = modulationManager.getModulatedValue (ModulationTarget::Type::TremoloRate);
+                    if (val >= 0.0f)
+                        paramKnobs[0].setValue (val, juce::dontSendNotification);
+                }
+                paramKnobs[0].setEnabled (!rateMod);
+            }
+            if (numActiveKnobs > 1)
+            {
+                bool depthMod = modulationManager.isTargetModulated (ModulationTarget::Type::TremoloDepth);
+                if (depthMod)
+                {
+                    float val = modulationManager.getModulatedValue (ModulationTarget::Type::TremoloDepth);
+                    if (val >= 0.0f)
+                        paramKnobs[1].setValue (val, juce::dontSendNotification);
+                }
+                paramKnobs[1].setEnabled (!depthMod);
+            }
+            break;
+        }
+
+        case EffectsChain::Distortion:
+        {
+            // Type (combo), Drive, Tone, Dry/Wet
+            if (numActiveKnobs > 0)
+            {
+                bool driveMod = modulationManager.isTargetModulated (ModulationTarget::Type::DistortionDrive);
+                if (driveMod)
+                {
+                    float val = modulationManager.getModulatedValue (ModulationTarget::Type::DistortionDrive);
+                    if (val >= 0.0f)
+                        paramKnobs[0].setValue (val, juce::dontSendNotification);
+                }
+                paramKnobs[0].setEnabled (!driveMod);
+            }
+            if (numActiveKnobs > 1)
+            {
+                bool toneMod = modulationManager.isTargetModulated (ModulationTarget::Type::DistortionTone);
+                if (toneMod)
+                {
+                    float val = modulationManager.getModulatedValue (ModulationTarget::Type::DistortionTone);
+                    if (val >= 0.0f)
+                        paramKnobs[1].setValue (val, juce::dontSendNotification);
+                }
+                paramKnobs[1].setEnabled (!toneMod);
+            }
+            if (numActiveKnobs > 2)
+            {
+                bool dwMod = modulationManager.isTargetModulated (ModulationTarget::Type::DistortionDryWet);
+                if (dwMod)
+                {
+                    float val = modulationManager.getModulatedValue (ModulationTarget::Type::DistortionDryWet);
+                    if (val >= 0.0f)
+                        paramKnobs[2].setValue (val, juce::dontSendNotification);
+                }
+                paramKnobs[2].setEnabled (!dwMod);
+            }
+            break;
+        }
+
+        case EffectsChain::Tape:
+        {
+            // Saturation, Bias, Wow Rate, Wow Depth, Flutter Rate, Flutter Depth, HF Loss, Dry/Wet
+            if (numActiveKnobs > 0)
+            {
+                bool satMod = modulationManager.isTargetModulated (ModulationTarget::Type::TapeSaturation);
+                if (satMod)
+                {
+                    float val = modulationManager.getModulatedValue (ModulationTarget::Type::TapeSaturation);
+                    if (val >= 0.0f)
+                        paramKnobs[0].setValue (val, juce::dontSendNotification);
+                }
+                paramKnobs[0].setEnabled (!satMod);
+            }
+            if (numActiveKnobs > 1)
+            {
+                bool biasMod = modulationManager.isTargetModulated (ModulationTarget::Type::TapeBias);
+                if (biasMod)
+                {
+                    float val = modulationManager.getModulatedValue (ModulationTarget::Type::TapeBias);
+                    if (val >= 0.0f)
+                        paramKnobs[1].setValue (val, juce::dontSendNotification);
+                }
+                paramKnobs[1].setEnabled (!biasMod);
+            }
+            if (numActiveKnobs > 3)
+            {
+                bool wowMod = modulationManager.isTargetModulated (ModulationTarget::Type::TapeWowDepth);
+                if (wowMod)
+                {
+                    float val = modulationManager.getModulatedValue (ModulationTarget::Type::TapeWowDepth);
+                    if (val >= 0.0f)
+                        paramKnobs[3].setValue (val, juce::dontSendNotification);
+                }
+                paramKnobs[3].setEnabled (!wowMod);
+            }
+            if (numActiveKnobs > 5)
+            {
+                bool flutMod = modulationManager.isTargetModulated (ModulationTarget::Type::TapeFlutterDepth);
+                if (flutMod)
+                {
+                    float val = modulationManager.getModulatedValue (ModulationTarget::Type::TapeFlutterDepth);
+                    if (val >= 0.0f)
+                        paramKnobs[5].setValue (val, juce::dontSendNotification);
+                }
+                paramKnobs[5].setEnabled (!flutMod);
+            }
+            if (numActiveKnobs > 7)
+            {
+                bool dwMod = modulationManager.isTargetModulated (ModulationTarget::Type::TapeDryWet);
+                if (dwMod)
+                {
+                    float val = modulationManager.getModulatedValue (ModulationTarget::Type::TapeDryWet);
+                    if (val >= 0.0f)
+                        paramKnobs[7].setValue (val, juce::dontSendNotification);
+                }
+                paramKnobs[7].setEnabled (!dwMod);
+            }
+            break;
+        }
+
+        default:
+            break;
+    }
+}
+
 void MainComponent::paint (juce::Graphics& g)
 {
     // Background
@@ -931,6 +1167,8 @@ void MainComponent::resized()
     droneTabButton.setBounds (header.removeFromLeft (60).reduced (2));
     header.removeFromLeft (3);
     loopsTabButton.setBounds (header.removeFromLeft (60).reduced (2));
+    header.removeFromLeft (3);
+    modulationTabButton.setBounds (header.removeFromLeft (50).reduced (2));
     header.removeFromLeft (15);
 
     // Live/Loop mix knob in header
@@ -1034,7 +1272,7 @@ void MainComponent::resized()
 
     // Show/hide loop controls based on active tab
     bool showLoops = (activeTab == 1);
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < 8; ++i)
     {
         loopButtons[i].setVisible (showLoops);
         loopAutoButtons[i].setVisible (showLoops);
@@ -1049,6 +1287,11 @@ void MainComponent::resized()
             loopProgressBars[i]->setVisible (showLoops);
     }
     clearLoopsButton.setVisible (showLoops);
+
+    // Show/hide modulation panel based on active tab
+    bool showModulation = (activeTab == 2);
+    if (modulationPanel)
+        modulationPanel->setVisible (showModulation);
 
     // Full width for active tab
     auto layoutKnobWithLabel = [&](juce::Slider& knob, juce::Label& label, juce::Rectangle<int>& area) {
@@ -1111,7 +1354,7 @@ void MainComponent::resized()
         octaveLabel.setBounds (pitchX, pitchRow.getY(), rotatedLabelWidth, knobSize);
         octaveKnob.setBounds (pitchX + rotatedLabelWidth, pitchRow.getY(), knobSize, knobSize + labelHeight + 4);
     }
-    else
+    else if (activeTab == 1)
     {
         // ===== LOOPS SECTION (full width) =====
         auto loopsArea = bounds.reduced (5);
@@ -1122,45 +1365,51 @@ void MainComponent::resized()
 
         loopsArea.removeFromTop (5);
 
-        // Per-loop controls - 4 horizontal strips (full width now)
-        const int loopStripWidth = loopsArea.getWidth() / 4;
-        const int smallKnob = 40;
+        // Per-loop controls - all 8 loops in a single row
+        const int loopStripWidth = loopsArea.getWidth() / 8;
+        const int smallKnob = 32;
 
-        for (int i = 0; i < 4; ++i)
+        for (int i = 0; i < 8; ++i)
         {
-            auto strip = loopsArea.removeFromLeft (loopStripWidth).reduced (3, 0);
+            auto strip = loopsArea.removeFromLeft (loopStripWidth).reduced (2, 0);
 
             // Progress bar at top (thin bar showing playhead position)
-            loopProgressBars[i]->setBounds (strip.removeFromTop (8).reduced (2, 1));
-            strip.removeFromTop (2);
+            loopProgressBars[i]->setBounds (strip.removeFromTop (6).reduced (1, 0));
+            strip.removeFromTop (1);
 
             // Loop button below progress bar
-            loopButtons[i].setBounds (strip.removeFromTop (28).reduced (2, 0));
-            strip.removeFromTop (2);
+            loopButtons[i].setBounds (strip.removeFromTop (22).reduced (1, 0));
+            strip.removeFromTop (1);
 
             // Auto button directly under loop button
-            loopAutoButtons[i].setBounds (strip.removeFromTop (20).reduced (4, 0));
-            strip.removeFromTop (2);
+            loopAutoButtons[i].setBounds (strip.removeFromTop (16).reduced (2, 0));
+            strip.removeFromTop (1);
 
             // Pitch selector directly under auto button (no label)
             loopPitchLabels[i].setVisible (false);
-            loopPitchCombos[i].setBounds (strip.removeFromTop (24).reduced (4, 0));
-            strip.removeFromTop (5);
-
-            // HP knob
-            loopHPLabels[i].setBounds (strip.removeFromTop (12));
-            loopHPSliders[i].setBounds (strip.removeFromTop (smallKnob).reduced (6, 0));
+            loopPitchCombos[i].setBounds (strip.removeFromTop (20).reduced (2, 0));
             strip.removeFromTop (2);
 
-            // LP knob
-            loopLPLabels[i].setBounds (strip.removeFromTop (12));
-            loopLPSliders[i].setBounds (strip.removeFromTop (smallKnob).reduced (6, 0));
-            strip.removeFromTop (5);
+            // HP knob
+            loopHPLabels[i].setBounds (strip.removeFromTop (10));
+            loopHPSliders[i].setBounds (strip.removeFromTop (smallKnob).reduced (4, 0));
+            strip.removeFromTop (1);
 
-            // Volume slider (vertical) - takes remaining space (taller now)
-            loopVolumeLabels[i].setBounds (strip.removeFromTop (12));
-            loopVolumeSliders[i].setBounds (strip.reduced (12, 0));
+            // LP knob
+            loopLPLabels[i].setBounds (strip.removeFromTop (10));
+            loopLPSliders[i].setBounds (strip.removeFromTop (smallKnob).reduced (4, 0));
+            strip.removeFromTop (2);
+
+            // Volume slider (vertical) - takes remaining space
+            loopVolumeLabels[i].setBounds (strip.removeFromTop (10));
+            loopVolumeSliders[i].setBounds (strip.reduced (8, 0));
         }
+    }
+    else if (activeTab == 2)
+    {
+        // ===== MODULATION SECTION (full width) =====
+        if (modulationPanel)
+            modulationPanel->setBounds (bounds.reduced (5));
     }
 }
 
@@ -1186,6 +1435,7 @@ void MainComponent::audioDeviceAboutToStart (juce::AudioIODevice* device)
 
     loopRecorder.prepareToPlay (currentSampleRate, blockSize);
     effectsChain.prepareToPlay (currentSampleRate, blockSize);
+    modulationManager.prepareToPlay (currentSampleRate, blockSize);
 }
 
 void MainComponent::audioDeviceStopped()
@@ -1258,6 +1508,10 @@ void MainComponent::audioDeviceIOCallbackWithContext (const float* const* inputC
 
     if (activeInputs > 0 || hasLoops)
     {
+        // Modulation mix value (may be overridden by modulation)
+        float currentMix = mix;
+        float currentVolume = volume;
+
         for (int i = 0; i < numSamples; ++i)
         {
             float fftInput = 0.0f;
@@ -1273,7 +1527,7 @@ void MainComponent::audioDeviceIOCallbackWithContext (const float* const* inputC
             float loopSample = hasLoops ? loopRecorder.getLoopMix() : 0.0f;
 
             // Crossfade between live and loops based on mix
-            fftInput = liveSample * (1.0f - mix) + loopSample * mix;
+            fftInput = liveSample * (1.0f - currentMix) + loopSample * currentMix;
 
             float outL, outR;
             if (width < 0.01f)
@@ -1292,9 +1546,27 @@ void MainComponent::audioDeviceIOCallbackWithContext (const float* const* inputC
 
             effectsChain.processSample (outL, outR);
 
+            // Process modulation sources (envelope follower uses raw microphone input)
+            modulationManager.processSample (liveSample, liveSample);
+
+            // Apply modulation to targets
+            float loopMixMod, masterVolumeMod;
+            modulationManager.applyModulation (loopRecorder, effectsChain, loopMixMod, masterVolumeMod);
+
+            // Update mix and volume if modulated (-1 means not modulated)
+            if (loopMixMod >= 0.0f)
+                currentMix = loopMixMod;
+            else
+                currentMix = mix;
+
+            if (masterVolumeMod >= 0.0f)
+                currentVolume = masterVolumeMod * volume;  // Multiply with manual volume
+            else
+                currentVolume = volume;
+
             // Apply master volume
-            outL *= volume;
-            outR *= volume;
+            outL *= currentVolume;
+            outR *= currentVolume;
 
             outputSum += outL * outL + outR * outR;
 
@@ -1319,7 +1591,7 @@ void MainComponent::timerCallback()
     bool learnMode = midiLearnActive.load();
     bool hasSelection = midiLearnHasSelection.load();
 
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < 8; ++i)
     {
         juce::Colour buttonColour;
 
@@ -1350,22 +1622,82 @@ void MainComponent::timerCallback()
         if (loopProgressBars[i])
             loopProgressBars[i]->repaint();
 
-        // Handle volume slider automation
+        // Handle volume slider automation and modulation
         bool hasLevelAutomation = loopRecorder.slotHasLevelAutomation (i);
         bool isAutomationRunning = loopRecorder.isPreviewRunning (i);
+        bool volumeModulated = modulationManager.isTargetModulated (ModulationTarget::Type::LoopVolume, i);
 
-        // If slot has level automation, move slider to show current automation level
+        // If slot has level automation or modulation, move slider to show current level
         if (hasLevelAutomation || isAutomationRunning)
         {
             float autoLevel = loopRecorder.getSlotAutomationLevel (i);
-            // Only update if different to avoid feedback loops
             if (std::abs (loopVolumeSliders[i].getValue() - autoLevel) > 0.01)
                 loopVolumeSliders[i].setValue (autoLevel, juce::dontSendNotification);
         }
+        else if (volumeModulated)
+        {
+            float modValue = modulationManager.getModulatedValue (ModulationTarget::Type::LoopVolume, i);
+            if (modValue >= 0.0f && std::abs (loopVolumeSliders[i].getValue() - modValue) > 0.01)
+                loopVolumeSliders[i].setValue (modValue, juce::dontSendNotification);
+        }
 
-        // Disable manual control if slot has level automation commands
-        loopVolumeSliders[i].setEnabled (!hasLevelAutomation);
+        // Disable manual control if slot has level automation or modulation
+        loopVolumeSliders[i].setEnabled (!hasLevelAutomation && !volumeModulated);
+
+        // Handle HP slider modulation
+        bool hpModulated = modulationManager.isTargetModulated (ModulationTarget::Type::LoopFilterHP, i);
+        if (hpModulated)
+        {
+            float modValue = modulationManager.getModulatedValue (ModulationTarget::Type::LoopFilterHP, i);
+            if (modValue >= 0.0f && std::abs (loopHPSliders[i].getValue() - modValue) > 1.0)
+            {
+                loopHPSliders[i].setValue (modValue, juce::dontSendNotification);
+                int freq = (int) modValue;
+                loopHPLabels[i].setText (juce::String (freq) + " Hz", juce::dontSendNotification);
+            }
+        }
+        loopHPSliders[i].setEnabled (!hpModulated);
+
+        // Handle LP slider modulation
+        bool lpModulated = modulationManager.isTargetModulated (ModulationTarget::Type::LoopFilterLP, i);
+        if (lpModulated)
+        {
+            float modValue = modulationManager.getModulatedValue (ModulationTarget::Type::LoopFilterLP, i);
+            if (modValue >= 0.0f && std::abs (loopLPSliders[i].getValue() - modValue) > 1.0)
+            {
+                loopLPSliders[i].setValue (modValue, juce::dontSendNotification);
+                int freq = (int) modValue;
+                if (freq >= 1000)
+                    loopLPLabels[i].setText (juce::String (freq / 1000.0f, 1) + "k", juce::dontSendNotification);
+                else
+                    loopLPLabels[i].setText (juce::String (freq) + " Hz", juce::dontSendNotification);
+            }
+        }
+        loopLPSliders[i].setEnabled (!lpModulated);
     }
+
+    // Handle Live/Loop mix modulation
+    bool loopMixModulated = modulationManager.isTargetModulated (ModulationTarget::Type::LoopMix);
+    if (loopMixModulated)
+    {
+        float modValue = modulationManager.getModulatedValue (ModulationTarget::Type::LoopMix);
+        if (modValue >= 0.0f && std::abs (loopMixKnob.getValue() - modValue) > 0.01)
+            loopMixKnob.setValue (modValue, juce::dontSendNotification);
+    }
+    loopMixKnob.setEnabled (!loopMixModulated);
+
+    // Handle Master volume modulation
+    bool masterVolumeModulated = modulationManager.isTargetModulated (ModulationTarget::Type::MasterVolume);
+    if (masterVolumeModulated)
+    {
+        float modValue = modulationManager.getModulatedValue (ModulationTarget::Type::MasterVolume);
+        if (modValue >= 0.0f && std::abs (masterVolumeKnob.getValue() - modValue) > 0.01)
+            masterVolumeKnob.setValue (modValue, juce::dontSendNotification);
+    }
+    masterVolumeKnob.setEnabled (!masterVolumeModulated);
+
+    // Update effect parameter knobs to reflect modulation
+    updateEffectParameterModulation();
 
     // Update MIDI learn button color
     if (learnMode)

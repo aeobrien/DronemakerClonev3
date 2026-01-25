@@ -38,6 +38,12 @@
         <FILE id="efxTapeH" name="TapeEffect.h" compile="0" resource="0" file="Source/Effects/TapeEffect.h"/>
         <FILE id="efxTapeC" name="TapeEffect.cpp" compile="1" resource="0" file="Source/Effects/TapeEffect.cpp"/>
       </GROUP>
+      <GROUP id="{MF6DE1B8-3E7D-E208-B73E-A3G6BD59D790}" name="Modulation">
+        <FILE id="modSrcH" name="ModulationSource.h" compile="0" resource="0" file="Source/Modulation/ModulationSource.h"/>
+        <FILE id="modMgrH" name="ModulationManager.h" compile="0" resource="0" file="Source/Modulation/ModulationManager.h"/>
+        <FILE id="modMgrC" name="ModulationManager.cpp" compile="1" resource="0" file="Source/Modulation/ModulationManager.cpp"/>
+        <FILE id="modPanelH" name="ModulationPanel.h" compile="0" resource="0" file="Source/Modulation/ModulationPanel.h"/>
+      </GROUP>
     </GROUP>
   </MAINGROUP>
   <MODULES>

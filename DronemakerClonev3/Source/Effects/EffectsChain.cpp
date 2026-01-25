@@ -114,3 +114,17 @@ TapeEffect* EffectsChain::getTape()
 {
     return static_cast<TapeEffect*> (effects[Tape].get());
 }
+
+void EffectsChain::setModulation (float delayTime, float delayFeedback, float delayDryWet,
+                                   float distortionDrive, float distortionTone, float distortionDryWet,
+                                   float tapeSaturation, float tapeBias, float tapeWowDepth, float tapeFlutterDepth, float tapeDryWet,
+                                   float filterHP, float filterLP, float filterHarmonicIntensity)
+{
+    // Modulation is applied through parameter offsets
+    // The UI stores base values and applies base + modulation when updating parameters
+    // This method is a placeholder - actual modulation is applied in MainComponent::applyModulation
+    juce::ignoreUnused (delayTime, delayFeedback, delayDryWet,
+                        distortionDrive, distortionTone, distortionDryWet,
+                        tapeSaturation, tapeBias, tapeWowDepth, tapeFlutterDepth, tapeDryWet,
+                        filterHP, filterLP, filterHarmonicIntensity);
+}

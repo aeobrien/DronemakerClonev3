@@ -5,6 +5,8 @@
 #include "LoopRecorder.h"
 #include "LoopAutomationEditor.h"
 #include "Effects/EffectsChain.h"
+#include "Modulation/ModulationManager.h"
+#include "Modulation/ModulationPanel.h"
 
 //==============================================================================
 // Minimal, instrument-like look & feel (appearance only)
@@ -503,6 +505,9 @@ private:
     // Update the effect parameter knobs for selected effect
     void updateEffectParameterKnobs();
 
+    // Update effect parameter knob values/enabled state for modulation
+    void updateEffectParameterModulation();
+
     // Audio
     juce::AudioDeviceManager deviceManager;
 
@@ -516,10 +521,11 @@ private:
     juce::TextButton bypassButton { "Bypass" };
     juce::TextButton midiLearnButton { "MIDI Learn" };
 
-    // Tab buttons for Drone/Loops sections
+    // Tab buttons for Drone/Loops/Modulation sections
     juce::TextButton droneTabButton { "Drone" };
     juce::TextButton loopsTabButton { "Loops" };
-    int activeTab = 0;  // 0 = Drone, 1 = Loops
+    juce::TextButton modulationTabButton { "Mod" };
+    int activeTab = 1;  // 0 = Drone, 1 = Loops, 2 = Modulation (default to Loops)
 
     // Master controls
     juce::Slider masterVolumeKnob;
@@ -569,21 +575,21 @@ private:
     // ===== LOOPS SECTION =====
     LoopRecorder loopRecorder;
     juce::Slider loopMixKnob;     juce::Label loopMixLabel;  // 0 = all live, 1 = all loops
-    std::array<juce::TextButton, 4> loopButtons;
+    std::array<juce::TextButton, 8> loopButtons;
     juce::TextButton clearLoopsButton { "Clear All" };
     std::atomic<float> loopMix { 0.0f };  // 0 = live only, 1 = loops only
 
     // Per-loop controls
-    std::array<juce::Slider, 4> loopVolumeSliders;
-    std::array<juce::Label, 4> loopVolumeLabels;
-    std::array<juce::Slider, 4> loopHPSliders;
-    std::array<juce::Label, 4> loopHPLabels;
-    std::array<juce::Slider, 4> loopLPSliders;
-    std::array<juce::Label, 4> loopLPLabels;
-    std::array<juce::ComboBox, 4> loopPitchCombos;
-    std::array<juce::Label, 4> loopPitchLabels;
-    std::array<juce::TextButton, 4> loopAutoButtons;  // "Auto" button per loop
-    std::array<std::unique_ptr<LoopProgressBar>, 4> loopProgressBars;  // Progress bar per loop
+    std::array<juce::Slider, 8> loopVolumeSliders;
+    std::array<juce::Label, 8> loopVolumeLabels;
+    std::array<juce::Slider, 8> loopHPSliders;
+    std::array<juce::Label, 8> loopHPLabels;
+    std::array<juce::Slider, 8> loopLPSliders;
+    std::array<juce::Label, 8> loopLPLabels;
+    std::array<juce::ComboBox, 8> loopPitchCombos;
+    std::array<juce::Label, 8> loopPitchLabels;
+    std::array<juce::TextButton, 8> loopAutoButtons;  // "Auto" button per loop
+    std::array<std::unique_ptr<LoopProgressBar>, 8> loopProgressBars;  // Progress bar per loop
 
     // Metering
     std::atomic<float> inputLevel { 0.0f };
@@ -603,6 +609,10 @@ private:
 
     // ===== EFFECTS CHAIN =====
     EffectsChain effectsChain;
+
+    // ===== MODULATION =====
+    ModulationManager modulationManager;
+    std::unique_ptr<ModulationPanel> modulationPanel;
 
     // Effects chain UI
     std::array<juce::TextButton, 6> effectButtons;
