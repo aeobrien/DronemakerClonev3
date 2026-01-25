@@ -52,6 +52,8 @@
 		F3409EBE55A8FBD9742464A5 /* DistortionEffect.cpp */ = {isa = PBXBuildFile; fileRef = 37C94EB3755465B82B0B6440; };
 		F638E16E7C29040FB7477844 /* Foundation.framework */ = {isa = PBXBuildFile; fileRef = 7A8EBC5A9EBA601B2D42DFED; };
 		FC9B2BD6533F344A4144E394 /* DelayEffect.cpp */ = {isa = PBXBuildFile; fileRef = B1DE79342FFF52FF3FBE9F74; };
+		LOOPAUTO01 /* LoopSequenceExecutor.cpp */ = {isa = PBXBuildFile; fileRef = LOOPAUTO02; };
+		LOOPAUTO03 /* LoopAutomationEditor.cpp */ = {isa = PBXBuildFile; fileRef = LOOPAUTO04; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -117,6 +119,11 @@
 		DD6384970D0145AB3EC10866 /* Info-App.plist */ /* Info-App.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "Info-App.plist"; path = "Info-App.plist"; sourceTree = SOURCE_ROOT; };
 		DFBD685C1F8F1CE001BEF091 /* include_juce_graphics.mm */ /* include_juce_graphics.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = include_juce_graphics.mm; path = ../../JuceLibraryCode/include_juce_graphics.mm; sourceTree = SOURCE_ROOT; };
 		E74CC0796F5D41B08847F892 /* LoopRecorder.h */ /* LoopRecorder.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = LoopRecorder.h; path = ../../Source/LoopRecorder.h; sourceTree = SOURCE_ROOT; };
+		LOOPAUTO05 /* LoopAutomation.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = LoopAutomation.h; path = ../../Source/LoopAutomation.h; sourceTree = SOURCE_ROOT; };
+		LOOPAUTO06 /* LoopSequenceExecutor.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = LoopSequenceExecutor.h; path = ../../Source/LoopSequenceExecutor.h; sourceTree = SOURCE_ROOT; };
+		LOOPAUTO02 /* LoopSequenceExecutor.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = LoopSequenceExecutor.cpp; path = ../../Source/LoopSequenceExecutor.cpp; sourceTree = SOURCE_ROOT; };
+		LOOPAUTO07 /* LoopAutomationEditor.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = LoopAutomationEditor.h; path = ../../Source/LoopAutomationEditor.h; sourceTree = SOURCE_ROOT; };
+		LOOPAUTO04 /* LoopAutomationEditor.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = LoopAutomationEditor.cpp; path = ../../Source/LoopAutomationEditor.cpp; sourceTree = SOURCE_ROOT; };
 		E92CEE254620D153D003D2A7 /* WebKit.framework */ /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
 		EED918219623D357A5358F28 /* juce_events */ /* juce_events */ = {isa = PBXFileReference; lastKnownFileType = folder; name = juce_events; path = /Users/aidan/Downloads/JUCE/modules/juce_events; sourceTree = "<absolute>"; };
 		F43019962F9360CF5C17B552 /* juce_graphics */ /* juce_graphics */ = {isa = PBXFileReference; lastKnownFileType = folder; name = juce_graphics; path = /Users/aidan/Downloads/JUCE/modules/juce_graphics; sourceTree = "<absolute>"; };
@@ -183,6 +190,11 @@
 				73C2CE6474EACFE5B22F2B4A,
 				E74CC0796F5D41B08847F892,
 				7DDE78D09EB9A256B66DD18D,
+				LOOPAUTO05,
+				LOOPAUTO06,
+				LOOPAUTO02,
+				LOOPAUTO07,
+				LOOPAUTO04,
 				DAC13DC0D96B426D8E393BB7,
 			);
 			name = Source;
@@ -385,6 +397,8 @@
 				6B66C38FD856DFF59ABEBB89,
 				716CE2F95169BD45023DA776,
 				28C6E76CF6B7DDD433293508,
+				LOOPAUTO01,
+				LOOPAUTO03,
 				6C40F0C13C323F1AF00F39FD,
 				32DD2BA179F2CDB3D5FC806A,
 				FC9B2BD6533F344A4144E394,

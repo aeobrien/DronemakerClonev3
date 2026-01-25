@@ -3,6 +3,7 @@
 #include <map>
 #include "FFTProcessor.h"
 #include "LoopRecorder.h"
+#include "LoopAutomationEditor.h"
 #include "Effects/EffectsChain.h"
 
 //==============================================================================
@@ -186,6 +187,123 @@ public:
     {
         label.setBounds (1, 1, box.getWidth() - 20, box.getHeight() - 2);
         label.setFont (juce::Font (juce::Font::getDefaultSansSerifFontName(), 12.0f, juce::Font::plain));
+    }
+};
+
+//==============================================================================
+// Loop info display showing waveform, length, and playhead position
+class LoopInfoDisplay : public juce::Component, public juce::Timer
+{
+public:
+    LoopInfoDisplay (LoopRecorder& recorder, int slotIndex)
+        : loopRecorder (recorder), slot (slotIndex)
+    {
+        setSize (300, 150);
+        startTimerHz (30);  // Update at 30 fps for smooth playhead
+    }
+
+    ~LoopInfoDisplay() override { stopTimer(); }
+
+    void paint (juce::Graphics& g) override
+    {
+        g.fillAll (juce::Colour (0xff17181d));
+
+        auto bounds = getLocalBounds().reduced (10);
+
+        // Title
+        g.setColour (juce::Colours::white.withAlpha (0.9f));
+        g.setFont (juce::Font (14.0f, juce::Font::bold));
+        g.drawText ("Loop " + juce::String (slot + 1) + " Info", bounds.removeFromTop (20), juce::Justification::centred);
+
+        bounds.removeFromTop (5);
+
+        // Check if slot has content
+        if (!loopRecorder.isSlotActive (slot))
+        {
+            g.setColour (juce::Colours::grey);
+            g.setFont (12.0f);
+            g.drawText ("No recorded content", bounds, juce::Justification::centred);
+            return;
+        }
+
+        // Info text
+        auto infoArea = bounds.removeFromTop (20);
+        int length = loopRecorder.getSlotLength (slot);
+        float progress = loopRecorder.getSlotProgress (slot);
+        double sampleRate = loopRecorder.getSampleRate();
+
+        float lengthSeconds = length / (float) sampleRate;
+        float currentPos = progress * lengthSeconds;
+
+        g.setColour (juce::Colours::white.withAlpha (0.8f));
+        g.setFont (11.0f);
+        g.drawText ("Length: " + juce::String (lengthSeconds, 2) + "s  |  Position: " +
+                    juce::String (currentPos, 2) + "s", infoArea, juce::Justification::centred);
+
+        bounds.removeFromTop (5);
+
+        // Waveform display
+        auto waveformArea = bounds.reduced (5);
+
+        // Background
+        g.setColour (juce::Colour (0xff1d1f26));
+        g.fillRoundedRectangle (waveformArea.toFloat(), 4.0f);
+
+        // Draw waveform
+        if (length > 0)
+        {
+            g.setColour (juce::Colour (0xff5dd6c6).withAlpha (0.8f));
+
+            const int width = waveformArea.getWidth();
+            const float centerY = waveformArea.getCentreY();
+            const float halfHeight = waveformArea.getHeight() * 0.4f;
+
+            juce::Path waveform;
+            bool firstPoint = true;
+
+            for (int x = 0; x < width; ++x)
+            {
+                // Sample the buffer at this position
+                int sampleIndex = (x * length) / width;
+                float sample = getSampleFromBuffer (sampleIndex);
+
+                float y = centerY - (sample * halfHeight);
+
+                if (firstPoint)
+                {
+                    waveform.startNewSubPath ((float) (waveformArea.getX() + x), y);
+                    firstPoint = false;
+                }
+                else
+                {
+                    waveform.lineTo ((float) (waveformArea.getX() + x), y);
+                }
+            }
+
+            g.strokePath (waveform, juce::PathStrokeType (1.0f));
+
+            // Draw playhead
+            float playheadX = waveformArea.getX() + (progress * waveformArea.getWidth());
+            g.setColour (juce::Colours::white);
+            g.drawLine (playheadX, (float) waveformArea.getY(),
+                        playheadX, (float) waveformArea.getBottom(), 2.0f);
+        }
+    }
+
+    void timerCallback() override
+    {
+        repaint();
+    }
+
+private:
+    LoopRecorder& loopRecorder;
+    int slot;
+
+    float getSampleFromBuffer (int index) const
+    {
+        // Access the loop buffer - need to add an accessor to LoopRecorder
+        // For now return a simplified version
+        return loopRecorder.getSampleAtIndex (slot, index);
     }
 };
 
@@ -408,6 +526,8 @@ private:
     std::array<juce::Label, 4> loopLPLabels;
     std::array<juce::ComboBox, 4> loopPitchCombos;
     std::array<juce::Label, 4> loopPitchLabels;
+    std::array<juce::TextButton, 4> loopAutoButtons;  // "Auto" button per loop
+    std::array<juce::TextButton, 4> loopInfoButtons;  // "i" button per loop for info display
 
     // Metering
     std::atomic<float> inputLevel { 0.0f };

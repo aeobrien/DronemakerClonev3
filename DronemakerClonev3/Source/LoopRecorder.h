@@ -4,17 +4,20 @@
 #include <array>
 #include <vector>
 #include <atomic>
+#include "LoopAutomation.h"
+#include "LoopSequenceExecutor.h"
 
 /**
  * Multi-slot loop recorder for feeding pre-recorded audio into the drone processor.
  * Each slot can have a different loop length and loops independently.
  * The dry loop audio is never heard - only its effect on the drone.
+ * Supports per-loop recording settings and post-record automation.
  */
 class LoopRecorder
 {
 public:
     static constexpr int numSlots = 4;
-    static constexpr int maxLoopSeconds = 30;
+    static constexpr int maxLoopSeconds = 300;  // Maximum possible (5 minutes)
 
     LoopRecorder();
 
@@ -47,6 +50,31 @@ public:
     int getSlotLength (int slot) const;
     float getSlotProgress (int slot) const;  // 0.0 to 1.0 playback position
 
+    // Per-slot settings
+    void setSlotSettings (int slot, const LoopSettings& settings);
+    LoopSettings getSlotSettings (int slot) const;
+
+    // Playback control (separate from hasContent)
+    void setSlotPlaying (int slot, bool playing);
+    bool isSlotPlaying (int slot) const;
+
+    // Preview automation sequence
+    void startPreview (int slot);
+    void stopPreview (int slot);
+    bool isPreviewRunning (int slot) const;
+
+    // Get automation level for a slot (for UI display)
+    float getSlotAutomationLevel (int slot) const;
+
+    // Check if a slot has level-affecting automation commands (SetLevel or RampLevel)
+    bool slotHasLevelAutomation (int slot) const;
+
+    // Get a sample at a specific index from a slot's buffer (for waveform display)
+    float getSampleAtIndex (int slot, int index) const;
+
+    // Get the current sample rate
+    double getSampleRate() const { return currentSampleRate; }
+
 private:
     struct LoopSlot
     {
@@ -54,6 +82,7 @@ private:
         int length = 0;              // Actual recorded length in samples
         double playPosition = 0.0;   // Current playback position (float for pitch shifting)
         bool hasContent = false;
+        bool isPlaying = false;      // Separate from hasContent - controlled by automation
 
         // Per-slot controls
         float volume = 1.0f;
@@ -64,6 +93,12 @@ private:
         // Filter states (simple one-pole filters)
         float hpState = 0.0f;
         float lpState = 0.0f;
+
+        // Automation
+        LoopSettings settings;              // Per-loop recording settings
+        LoopSequenceExecutor executor;      // Runtime automation executor
+        float automationLevel = 1.0f;       // Current level from automation (0.0-1.0)
+        int maxSamplesForSlot = 0;          // Calculated from settings.maxRecordLengthSeconds
     };
 
     std::array<LoopSlot, numSlots> slots;

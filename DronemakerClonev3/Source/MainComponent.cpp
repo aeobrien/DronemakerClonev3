@@ -332,6 +332,38 @@ MainComponent::MainComponent()
         loopPitchLabels[i].setColour (juce::Label::textColourId, juce::Colours::lightgrey);
         addAndMakeVisible (loopPitchLabels[i]);
 
+        // Auto button for loop automation settings
+        loopAutoButtons[i].setButtonText ("Auto");
+        loopAutoButtons[i].setColour (juce::TextButton::buttonColourId, juce::Colour (0xff2a2b31));
+        loopAutoButtons[i].onClick = [this, i] {
+            auto* editor = new LoopAutomationEditor (loopRecorder, i);
+            juce::DialogWindow::LaunchOptions options;
+            options.content.setOwned (editor);
+            options.dialogTitle = "Loop " + juce::String (i + 1) + " Automation";
+            options.dialogBackgroundColour = juce::Colour (0xff17181d);
+            options.escapeKeyTriggersCloseButton = true;
+            options.useNativeTitleBar = true;
+            options.resizable = false;
+            options.launchAsync();
+        };
+        addAndMakeVisible (loopAutoButtons[i]);
+
+        // Info button for loop waveform display
+        loopInfoButtons[i].setButtonText ("i");
+        loopInfoButtons[i].setColour (juce::TextButton::buttonColourId, juce::Colour (0xff2a2b31));
+        loopInfoButtons[i].onClick = [this, i] {
+            auto* info = new LoopInfoDisplay (loopRecorder, i);
+            juce::DialogWindow::LaunchOptions options;
+            options.content.setOwned (info);
+            options.dialogTitle = "Loop " + juce::String (i + 1) + " Waveform";
+            options.dialogBackgroundColour = juce::Colour (0xff17181d);
+            options.escapeKeyTriggersCloseButton = true;
+            options.useNativeTitleBar = true;
+            options.resizable = false;
+            options.launchAsync();
+        };
+        addAndMakeVisible (loopInfoButtons[i]);
+
         // Loop button
         loopButtons[i].setButtonText ("Loop " + juce::String (i + 1));
         loopButtons[i].setColour (juce::TextButton::buttonColourId, juce::Colour (0xff2a2b31));
@@ -1040,11 +1072,20 @@ void MainComponent::resized()
     {
         auto strip = loopsArea.removeFromLeft (loopStripWidth).reduced (3, 0);
 
-        // Loop button at top
-        loopButtons[i].setBounds (strip.removeFromTop (28).reduced (2, 0));
-        strip.removeFromTop (3);
+        // Info button at top (small "i" button)
+        auto topRow = strip.removeFromTop (18);
+        loopInfoButtons[i].setBounds (topRow.removeFromRight (20).reduced (1, 0));
+        strip.removeFromTop (2);
 
-        // Pitch selector directly under button (no label)
+        // Loop button below info
+        loopButtons[i].setBounds (strip.removeFromTop (28).reduced (2, 0));
+        strip.removeFromTop (2);
+
+        // Auto button directly under loop button
+        loopAutoButtons[i].setBounds (strip.removeFromTop (20).reduced (4, 0));
+        strip.removeFromTop (2);
+
+        // Pitch selector directly under auto button (no label)
         loopPitchLabels[i].setVisible (false);
         loopPitchCombos[i].setBounds (strip.removeFromTop (24).reduced (4, 0));
         strip.removeFromTop (5);
@@ -1246,6 +1287,22 @@ void MainComponent::timerCallback()
         }
 
         loopButtons[i].setColour (juce::TextButton::buttonColourId, buttonColour);
+
+        // Handle volume slider automation
+        bool hasLevelAutomation = loopRecorder.slotHasLevelAutomation (i);
+        bool isAutomationRunning = loopRecorder.isPreviewRunning (i);
+
+        // If slot has level automation, move slider to show current automation level
+        if (hasLevelAutomation || isAutomationRunning)
+        {
+            float autoLevel = loopRecorder.getSlotAutomationLevel (i);
+            // Only update if different to avoid feedback loops
+            if (std::abs (loopVolumeSliders[i].getValue() - autoLevel) > 0.01)
+                loopVolumeSliders[i].setValue (autoLevel, juce::dontSendNotification);
+        }
+
+        // Disable manual control if slot has level automation commands
+        loopVolumeSliders[i].setEnabled (!hasLevelAutomation);
     }
 
     // Update MIDI learn button color

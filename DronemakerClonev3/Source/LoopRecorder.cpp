@@ -16,8 +16,12 @@ void LoopRecorder::prepareToPlay (double sampleRate, int /*samplesPerBlock*/)
         slot.length = 0;
         slot.playPosition = 0.0;
         slot.hasContent = false;
+        slot.isPlaying = false;
         slot.hpState = 0.0f;
         slot.lpState = 0.0f;
+        slot.automationLevel = 1.0f;
+        // Calculate per-slot max samples from settings
+        slot.maxSamplesForSlot = static_cast<int> (sampleRate * slot.settings.maxRecordLengthSeconds);
     }
 
     activeRecordSlot = -1;
@@ -37,11 +41,17 @@ void LoopRecorder::startRecording (int slot)
     stopRecording();
 
     // Clear the target slot and start recording
-    slots[slot].length = 0;
-    slots[slot].playPosition = 0.0;
-    slots[slot].hasContent = false;
-    slots[slot].hpState = 0.0f;
-    slots[slot].lpState = 0.0f;
+    auto& s = slots[slot];
+    s.length = 0;
+    s.playPosition = 0.0;
+    s.hasContent = false;
+    s.isPlaying = false;
+    s.hpState = 0.0f;
+    s.lpState = 0.0f;
+    s.automationLevel = 1.0f;
+    s.executor.cancel();
+    // Recalculate max samples in case settings changed
+    s.maxSamplesForSlot = static_cast<int> (currentSampleRate * s.settings.maxRecordLengthSeconds);
     activeRecordSlot = slot;
 }
 
@@ -50,10 +60,24 @@ void LoopRecorder::stopRecording()
     if (activeRecordSlot >= 0 && activeRecordSlot < numSlots)
     {
         auto& slot = slots[activeRecordSlot];
-        if (slot.length > 0)
+
+        // Check minimum recording length (0.75 seconds)
+        float recordedSeconds = static_cast<float> (slot.length) / static_cast<float> (currentSampleRate);
+
+        if (recordedSeconds >= 0.75f)
         {
+            // Valid recording - keep it and start automation
             slot.hasContent = true;
-            slot.playPosition = 0.0;  // Start playback from beginning
+            slot.playPosition = 0.0;
+            slot.automationLevel = 1.0f;
+            // Start the post-record automation sequence
+            slot.executor.startSequence (slot.settings.postRecordSequence, currentSampleRate);
+        }
+        else
+        {
+            // Recording too short - discard it (keep previous content if any)
+            slot.length = 0;
+            // Don't change hasContent - keep previous loop if there was one
         }
     }
     activeRecordSlot = -1;
@@ -68,11 +92,15 @@ void LoopRecorder::clearSlot (int slot)
     if (activeRecordSlot == slot)
         activeRecordSlot = -1;
 
-    slots[slot].length = 0;
-    slots[slot].playPosition = 0.0;
-    slots[slot].hasContent = false;
-    slots[slot].hpState = 0.0f;
-    slots[slot].lpState = 0.0f;
+    auto& s = slots[slot];
+    s.length = 0;
+    s.playPosition = 0.0;
+    s.hasContent = false;
+    s.isPlaying = false;
+    s.hpState = 0.0f;
+    s.lpState = 0.0f;
+    s.automationLevel = 1.0f;
+    s.executor.cancel();
 }
 
 void LoopRecorder::clearAll()
@@ -83,8 +111,11 @@ void LoopRecorder::clearAll()
         slot.length = 0;
         slot.playPosition = 0.0;
         slot.hasContent = false;
+        slot.isPlaying = false;
         slot.hpState = 0.0f;
         slot.lpState = 0.0f;
+        slot.automationLevel = 1.0f;
+        slot.executor.cancel();
     }
 }
 
@@ -95,8 +126,11 @@ void LoopRecorder::recordSample (float sample)
 
     auto& slot = slots[activeRecordSlot];
 
+    // Check against per-slot max length (use global max as hard limit)
+    int effectiveMax = std::min (slot.maxSamplesForSlot, maxLoopSamples);
+
     // Only record if we haven't hit the max length
-    if (slot.length < maxLoopSamples)
+    if (slot.length < effectiveMax)
     {
         slot.buffer[slot.length] = sample;
         slot.length++;
@@ -158,7 +192,16 @@ float LoopRecorder::getLoopMix()
 
     for (auto& slot : slots)
     {
-        if (slot.hasContent && slot.length > 0)
+        // Process executor every sample (even if not playing, to keep automation running)
+        if (slot.executor.isRunning())
+        {
+            slot.automationLevel = slot.executor.processSample (currentSampleRate);
+        }
+        // Always update isPlaying from executor state (it persists after sequence ends)
+        slot.isPlaying = slot.executor.isPlaybackEnabled();
+
+        // Only mix if hasContent AND isPlaying
+        if (slot.hasContent && slot.isPlaying && slot.length > 0)
         {
             // Get playback rate based on pitch octave
             double playbackRate = 1.0;
@@ -181,8 +224,8 @@ float LoopRecorder::getLoopMix()
             slot.lpState += lpCoeff * (hpOutput - slot.lpState);
             float filtered = slot.lpState;
 
-            // Apply volume
-            mix += filtered * slot.volume;
+            // Apply volume AND automation level
+            mix += filtered * slot.volume * slot.automationLevel;
             activeCount++;
 
             // Advance play position based on pitch
@@ -231,4 +274,105 @@ float LoopRecorder::getSlotProgress (int slot) const
         return 0.0f;
 
     return static_cast<float> (s.playPosition) / static_cast<float> (s.length);
+}
+
+void LoopRecorder::setSlotSettings (int slot, const LoopSettings& settings)
+{
+    if (slot < 0 || slot >= numSlots)
+        return;
+
+    slots[slot].settings = settings;
+    // Update max samples for this slot
+    slots[slot].maxSamplesForSlot = static_cast<int> (currentSampleRate * settings.maxRecordLengthSeconds);
+}
+
+LoopSettings LoopRecorder::getSlotSettings (int slot) const
+{
+    if (slot < 0 || slot >= numSlots)
+        return LoopSettings();
+
+    return slots[slot].settings;
+}
+
+void LoopRecorder::setSlotPlaying (int slot, bool playing)
+{
+    if (slot < 0 || slot >= numSlots)
+        return;
+
+    slots[slot].isPlaying = playing;
+}
+
+bool LoopRecorder::isSlotPlaying (int slot) const
+{
+    if (slot < 0 || slot >= numSlots)
+        return false;
+
+    return slots[slot].isPlaying;
+}
+
+void LoopRecorder::startPreview (int slot)
+{
+    if (slot < 0 || slot >= numSlots)
+        return;
+
+    auto& s = slots[slot];
+    // Start the automation sequence for preview (requires content)
+    if (s.hasContent)
+    {
+        s.automationLevel = 1.0f;
+        s.executor.startSequence (s.settings.postRecordSequence, currentSampleRate);
+    }
+}
+
+void LoopRecorder::stopPreview (int slot)
+{
+    if (slot < 0 || slot >= numSlots)
+        return;
+
+    auto& s = slots[slot];
+    s.executor.cancel();
+    s.isPlaying = false;
+    s.automationLevel = 1.0f;
+}
+
+bool LoopRecorder::isPreviewRunning (int slot) const
+{
+    if (slot < 0 || slot >= numSlots)
+        return false;
+
+    return slots[slot].executor.isRunning();
+}
+
+float LoopRecorder::getSlotAutomationLevel (int slot) const
+{
+    if (slot < 0 || slot >= numSlots)
+        return 1.0f;
+
+    return slots[slot].automationLevel;
+}
+
+bool LoopRecorder::slotHasLevelAutomation (int slot) const
+{
+    if (slot < 0 || slot >= numSlots)
+        return false;
+
+    const auto& sequence = slots[slot].settings.postRecordSequence;
+    for (const auto& cmd : sequence.commands)
+    {
+        if (std::holds_alternative<SetLevel> (cmd) || std::holds_alternative<RampLevel> (cmd))
+            return true;
+    }
+    return false;
+}
+
+float LoopRecorder::getSampleAtIndex (int slot, int index) const
+{
+    if (slot < 0 || slot >= numSlots)
+        return 0.0f;
+
+    const auto& s = slots[slot];
+    if (!s.hasContent || index < 0 || index >= s.length)
+        return 0.0f;
+
+    return s.buffer[index];
 }
