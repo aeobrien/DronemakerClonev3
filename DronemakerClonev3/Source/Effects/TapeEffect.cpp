@@ -8,6 +8,17 @@ TapeEffect::TapeEffect()
 void TapeEffect::prepareToPlay (double sr, int /*samplesPerBlock*/)
 {
     sampleRate = sr;
+
+    // Set up parameter smoothing
+    saturationSmooth.setSmoothingTime (sr, 10.0f);
+    biasSmooth.setSmoothingTime (sr, 10.0f);
+    wowRateSmooth.setSmoothingTime (sr, 20.0f);
+    wowDepthSmooth.setSmoothingTime (sr, 20.0f);
+    flutterRateSmooth.setSmoothingTime (sr, 20.0f);
+    flutterDepthSmooth.setSmoothingTime (sr, 20.0f);
+    hfLossSmooth.setSmoothingTime (sr, 10.0f);
+    dryWetSmooth.setSmoothingTime (sr, 10.0f);
+
     reset();
 }
 
@@ -22,7 +33,7 @@ void TapeEffect::reset()
     hfStateR = 0.0f;
 }
 
-float TapeEffect::processSaturation (float sample)
+float TapeEffect::processSaturation (float sample, float saturation, float bias)
 {
     // Tape saturation using soft clipping with bias
     // Bias affects the asymmetry of the saturation curve
@@ -57,12 +68,22 @@ void TapeEffect::processSample (float& left, float& right)
     if (! enabled)
         return;
 
+    // Get smoothed parameter values
+    float saturation = saturationSmooth.getNextValue();
+    float bias = biasSmooth.getNextValue();
+    float wowRate = wowRateSmooth.getNextValue();
+    float wowDepth = wowDepthSmooth.getNextValue();
+    float flutterRate = flutterRateSmooth.getNextValue();
+    float flutterDepth = flutterDepthSmooth.getNextValue();
+    float hfLoss = hfLossSmooth.getNextValue();
+    float dryWet = dryWetSmooth.getNextValue();
+
     float dryL = left;
     float dryR = right;
 
     // Apply saturation first
-    float wetL = processSaturation (left);
-    float wetR = processSaturation (right);
+    float wetL = processSaturation (left, saturation, bias);
+    float wetR = processSaturation (right, saturation, bias);
 
     // Write to delay line
     delayLineL[writePos] = wetL;

@@ -1,6 +1,48 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <cmath>
+
+/**
+ * Simple parameter smoother using one-pole lowpass filter.
+ * Prevents clicks when parameters change by smoothly interpolating.
+ */
+class SmoothedParam
+{
+public:
+    SmoothedParam (float initialValue = 0.0f) : target (initialValue), current (initialValue) {}
+
+    void setTargetValue (float newTarget) { target = newTarget; }
+    float getTargetValue() const { return target; }
+
+    void setCurrentAndTarget (float value) { current = target = value; }
+
+    // Call once when sample rate is known
+    void setSmoothingTime (double sampleRate, float timeMs = 10.0f)
+    {
+        // Calculate coefficient for given smoothing time
+        // timeMs is the approximate time to reach 63% of target (one time constant)
+        float smoothingHz = 1000.0f / timeMs;
+        coeff = 1.0f - std::exp (-2.0f * 3.14159265f * smoothingHz / static_cast<float> (sampleRate));
+    }
+
+    // Call once per sample to get smoothed value
+    float getNextValue()
+    {
+        current += coeff * (target - current);
+        return current;
+    }
+
+    float getCurrentValue() const { return current; }
+
+    // Check if we're close enough to target (for optimization)
+    bool isSmoothing() const { return std::abs (target - current) > 1e-6f; }
+
+private:
+    float target = 0.0f;
+    float current = 0.0f;
+    float coeff = 0.1f;  // Default smoothing coefficient
+};
 
 /**
  * Abstract base class for all effects in the master effects chain.

@@ -308,6 +308,57 @@ private:
 };
 
 //==============================================================================
+// Clickable progress bar for loop playhead position
+class LoopProgressBar : public juce::Component
+{
+public:
+    LoopProgressBar (LoopRecorder& recorder, int slotIndex)
+        : loopRecorder (recorder), slot (slotIndex) {}
+
+    void paint (juce::Graphics& g) override
+    {
+        auto bounds = getLocalBounds().toFloat();
+
+        // Background
+        g.setColour (juce::Colour (0xff1d1f26));
+        g.fillRoundedRectangle (bounds, 2.0f);
+
+        // Progress fill
+        if (loopRecorder.isSlotActive (slot))
+        {
+            float progress = loopRecorder.getSlotProgress (slot);
+            auto fillBounds = bounds;
+            fillBounds.setWidth (bounds.getWidth() * progress);
+
+            g.setColour (juce::Colour (0xff5dd6c6).withAlpha (0.7f));
+            g.fillRoundedRectangle (fillBounds, 2.0f);
+        }
+
+        // Border
+        g.setColour (juce::Colours::white.withAlpha (0.1f));
+        g.drawRoundedRectangle (bounds.reduced (0.5f), 2.0f, 1.0f);
+    }
+
+    void mouseDown (const juce::MouseEvent&) override
+    {
+        // Open waveform dialog when clicked
+        auto* info = new LoopInfoDisplay (loopRecorder, slot);
+        juce::DialogWindow::LaunchOptions options;
+        options.content.setOwned (info);
+        options.dialogTitle = "Loop " + juce::String (slot + 1) + " Waveform";
+        options.dialogBackgroundColour = juce::Colour (0xff17181d);
+        options.escapeKeyTriggersCloseButton = true;
+        options.useNativeTitleBar = true;
+        options.resizable = false;
+        options.launchAsync();
+    }
+
+private:
+    LoopRecorder& loopRecorder;
+    int slot;
+};
+
+//==============================================================================
 // Settings dialog for audio device configuration
 class SettingsDialog : public juce::Component
 {
@@ -465,6 +516,11 @@ private:
     juce::TextButton bypassButton { "Bypass" };
     juce::TextButton midiLearnButton { "MIDI Learn" };
 
+    // Tab buttons for Drone/Loops sections
+    juce::TextButton droneTabButton { "Drone" };
+    juce::TextButton loopsTabButton { "Loops" };
+    int activeTab = 0;  // 0 = Drone, 1 = Loops
+
     // Master controls
     juce::Slider masterVolumeKnob;
     juce::Label masterVolumeLabel;
@@ -527,7 +583,7 @@ private:
     std::array<juce::ComboBox, 4> loopPitchCombos;
     std::array<juce::Label, 4> loopPitchLabels;
     std::array<juce::TextButton, 4> loopAutoButtons;  // "Auto" button per loop
-    std::array<juce::TextButton, 4> loopInfoButtons;  // "i" button per loop for info display
+    std::array<std::unique_ptr<LoopProgressBar>, 4> loopProgressBars;  // Progress bar per loop
 
     // Metering
     std::atomic<float> inputLevel { 0.0f };

@@ -61,19 +61,23 @@ private:
     std::array<float, maxHarmonicFreqs> harmonicFreqs {};
     int numHarmonicFreqs = 0;
 
-    // Harmonic filter state (resonant bandpass for each allowed frequency)
+    // Harmonic filter state (biquad bandpass for each allowed frequency)
     static constexpr int maxResonators = 32;
     struct Resonator
     {
         float freq = 440.0f;
-        float stateL = 0.0f;
-        float stateR = 0.0f;
+        // Biquad state
+        float z1L = 0.0f, z2L = 0.0f;
+        float z1R = 0.0f, z2R = 0.0f;
+        // Biquad coefficients
+        float b0 = 0.0f, b1 = 0.0f, b2 = 0.0f;
+        float a1 = 0.0f, a2 = 0.0f;
     };
     std::array<Resonator, maxResonators> resonators {};
     int numResonators = 0;
 
     void updateHarmonicFrequencies();
-    float processHarmonicFilter (float sample, float& state);
+    void updateResonatorCoefficients();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FilterEffect)
 };

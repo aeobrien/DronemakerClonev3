@@ -10,6 +10,7 @@ void FilterEffect::prepareToPlay (double sr, int /*samplesPerBlock*/)
 {
     sampleRate = sr;
     reset();
+    updateResonatorCoefficients();
 }
 
 void FilterEffect::reset()
@@ -21,8 +22,8 @@ void FilterEffect::reset()
 
     for (auto& r : resonators)
     {
-        r.stateL = 0.0f;
-        r.stateR = 0.0f;
+        r.z1L = r.z2L = 0.0f;
+        r.z1R = r.z2R = 0.0f;
     }
 }
 
@@ -76,27 +77,28 @@ void FilterEffect::processSample (float& left, float& right)
         for (int i = 0; i < numResonators; ++i)
         {
             auto& r = resonators[i];
-            float bpCoeff = 1.0f - std::exp (-2.0f * pi * 50.0f / static_cast<float> (sampleRate));  // ~50Hz bandwidth
 
-            // Simple resonator: bandpass around frequency
-            float targetCoeff = 1.0f - std::exp (-2.0f * pi * r.freq / static_cast<float> (sampleRate));
+            // Process left channel through biquad bandpass
+            float inL = left;
+            float outL = r.b0 * inL + r.b1 * r.z1L + r.b2 * r.z2L - r.a1 * r.z1L - r.a2 * r.z2L;
+            r.z2L = r.z1L;
+            r.z1L = outL;
+            harmonicL += outL;
 
-            r.stateL += targetCoeff * (left - r.stateL);
-            r.stateR += targetCoeff * (right - r.stateR);
-
-            // Bandpass-ish output
-            float bpL = (left - r.stateL) * bpCoeff + r.stateL;
-            float bpR = (right - r.stateR) * bpCoeff + r.stateR;
-
-            harmonicL += bpL;
-            harmonicR += bpR;
+            // Process right channel through biquad bandpass
+            float inR = right;
+            float outR = r.b0 * inR + r.b1 * r.z1R + r.b2 * r.z2R - r.a1 * r.z1R - r.a2 * r.z2R;
+            r.z2R = r.z1R;
+            r.z1R = outR;
+            harmonicR += outR;
         }
 
-        // Normalize by number of resonators
+        // Scale output (resonators have gain based on Q)
         if (numResonators > 0)
         {
-            harmonicL /= static_cast<float> (numResonators);
-            harmonicR /= static_cast<float> (numResonators);
+            float scale = 2.0f / std::sqrt (static_cast<float> (numResonators));
+            harmonicL *= scale;
+            harmonicR *= scale;
         }
 
         // Blend based on intensity
@@ -141,10 +143,44 @@ void FilterEffect::updateHarmonicFrequencies()
             if (freq >= 20.0f && freq <= 20000.0f)
             {
                 resonators[numResonators].freq = freq;
-                resonators[numResonators].stateL = 0.0f;
-                resonators[numResonators].stateR = 0.0f;
+                resonators[numResonators].z1L = 0.0f;
+                resonators[numResonators].z2L = 0.0f;
+                resonators[numResonators].z1R = 0.0f;
+                resonators[numResonators].z2R = 0.0f;
                 numResonators++;
             }
         }
+    }
+
+    // Update coefficients if we have a valid sample rate
+    if (sampleRate > 0)
+        updateResonatorCoefficients();
+}
+
+void FilterEffect::updateResonatorCoefficients()
+{
+    const float pi = juce::MathConstants<float>::pi;
+
+    // Q factor determines bandwidth (higher Q = narrower bandwidth)
+    // Q of 20-40 gives good resonant character while still allowing some bandwidth
+    const float Q = 25.0f;
+
+    for (int i = 0; i < numResonators; ++i)
+    {
+        auto& r = resonators[i];
+
+        // Calculate biquad bandpass coefficients
+        float w0 = 2.0f * pi * r.freq / static_cast<float> (sampleRate);
+        float cosW0 = std::cos (w0);
+        float sinW0 = std::sin (w0);
+        float alpha = sinW0 / (2.0f * Q);
+
+        // Bandpass filter coefficients (constant 0 dB peak gain)
+        float a0 = 1.0f + alpha;
+        r.b0 = alpha / a0;
+        r.b1 = 0.0f;
+        r.b2 = -alpha / a0;
+        r.a1 = -2.0f * cosW0 / a0;
+        r.a2 = (1.0f - alpha) / a0;
     }
 }

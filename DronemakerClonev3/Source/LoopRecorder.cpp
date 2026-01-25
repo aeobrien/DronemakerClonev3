@@ -163,7 +163,7 @@ void LoopRecorder::setSlotLowPass (int slot, float freqHz)
 void LoopRecorder::setSlotPitchOctave (int slot, int octave)
 {
     if (slot >= 0 && slot < numSlots)
-        slots[slot].pitchOctave = juce::jlimit (-1, 1, octave);
+        slots[slot].pitchOctave = juce::jlimit (-2, 2, octave);
 }
 
 float LoopRecorder::getInterpolatedSample (const LoopSlot& slot, double position) const
@@ -204,11 +204,8 @@ float LoopRecorder::getLoopMix()
         if (slot.hasContent && slot.isPlaying && slot.length > 0)
         {
             // Get playback rate based on pitch octave
-            double playbackRate = 1.0;
-            if (slot.pitchOctave == -1)
-                playbackRate = 0.5;   // Octave down = half speed
-            else if (slot.pitchOctave == 1)
-                playbackRate = 2.0;   // Octave up = double speed
+            // Each octave doubles/halves the playback rate
+            double playbackRate = std::pow (2.0, slot.pitchOctave);
 
             // Read sample with interpolation
             float sample = getInterpolatedSample (slot, slot.playPosition);

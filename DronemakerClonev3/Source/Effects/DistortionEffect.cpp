@@ -8,6 +8,14 @@ DistortionEffect::DistortionEffect()
 void DistortionEffect::prepareToPlay (double sr, int /*samplesPerBlock*/)
 {
     sampleRate = sr;
+
+    // Set up parameter smoothing (10ms smoothing time)
+    driveSmooth.setSmoothingTime (sr, 10.0f);
+    toneSmooth.setSmoothingTime (sr, 10.0f);
+    dryWetSmooth.setSmoothingTime (sr, 10.0f);
+    bitDepthSmooth.setSmoothingTime (sr, 20.0f);
+    srReductionSmooth.setSmoothingTime (sr, 20.0f);
+
     reset();
 }
 
@@ -20,7 +28,7 @@ void DistortionEffect::reset()
     holdL = holdR = 0.0f;
 }
 
-float DistortionEffect::processSoftClip (float sample)
+float DistortionEffect::processSoftClip (float sample, float drive)
 {
     // Soft clipping using tanh - smooth, tube-like saturation
     // Apply drive as gain before saturation
@@ -30,7 +38,7 @@ float DistortionEffect::processSoftClip (float sample)
     return std::tanh (sample);
 }
 
-float DistortionEffect::processHardClip (float sample)
+float DistortionEffect::processHardClip (float sample, float drive)
 {
     // Hard clipping - harsh, transistor-like distortion
     // Apply drive as gain
@@ -46,7 +54,7 @@ float DistortionEffect::processHardClip (float sample)
     return juce::jlimit (-1.0f, 1.0f, sample);
 }
 
-float DistortionEffect::processWavefold (float sample)
+float DistortionEffect::processWavefold (float sample, float drive)
 {
     // Wavefolder - creates complex harmonics by folding the waveform
     // Apply drive as gain
@@ -64,7 +72,7 @@ float DistortionEffect::processWavefold (float sample)
     return sample;
 }
 
-float DistortionEffect::processBitcrush (float sample, float& hold, int& counter)
+float DistortionEffect::processBitcrush (float sample, float& hold, int& counter, float bitDepth, float srReduction)
 {
     // Sample rate reduction
     counter++;
@@ -95,6 +103,13 @@ void DistortionEffect::processSample (float& left, float& right)
     if (! enabled)
         return;
 
+    // Get smoothed parameter values
+    float drive = driveSmooth.getNextValue();
+    float tone = toneSmooth.getNextValue();
+    float dryWet = dryWetSmooth.getNextValue();
+    float bitDepth = bitDepthSmooth.getNextValue();
+    float srReduction = srReductionSmooth.getNextValue();
+
     float dryL = left;
     float dryR = right;
 
@@ -104,23 +119,23 @@ void DistortionEffect::processSample (float& left, float& right)
     switch (algorithm)
     {
         case SoftClip:
-            wetL = processSoftClip (left);
-            wetR = processSoftClip (right);
+            wetL = processSoftClip (left, drive);
+            wetR = processSoftClip (right, drive);
             break;
 
         case HardClip:
-            wetL = processHardClip (left);
-            wetR = processHardClip (right);
+            wetL = processHardClip (left, drive);
+            wetR = processHardClip (right, drive);
             break;
 
         case Wavefold:
-            wetL = processWavefold (left);
-            wetR = processWavefold (right);
+            wetL = processWavefold (left, drive);
+            wetR = processWavefold (right, drive);
             break;
 
         case Bitcrush:
-            wetL = processBitcrush (left, holdL, srCounter);
-            wetR = processBitcrush (right, holdR, srCounter);
+            wetL = processBitcrush (left, holdL, srCounter, bitDepth, srReduction);
+            wetR = processBitcrush (right, holdR, srCounter, bitDepth, srReduction);
             break;
 
         default:

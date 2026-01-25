@@ -6,6 +6,7 @@
 /**
  * Analog tape simulation with saturation, wow/flutter, and HF loss.
  * Separate rate and depth controls for wow and flutter.
+ * Uses parameter smoothing to prevent clicks when adjusting.
  */
 class TapeEffect : public EffectBase
 {
@@ -18,40 +19,40 @@ public:
     juce::String getName() const override { return "Tape"; }
 
     // Saturation (0-2, higher values for extreme saturation)
-    void setSaturation (float s) { saturation = juce::jlimit (0.0f, 2.0f, s); }
-    void setBias (float b) { bias = juce::jlimit (0.0f, 1.0f, b); }
+    void setSaturation (float s) { saturationSmooth.setTargetValue (juce::jlimit (0.0f, 2.0f, s)); }
+    void setBias (float b) { biasSmooth.setTargetValue (juce::jlimit (0.0f, 1.0f, b)); }
 
     // Wow (slow pitch variation) - separate rate and depth
-    void setWowRate (float hz) { wowRate = juce::jlimit (0.1f, 2.0f, hz); }
-    void setWowDepth (float d) { wowDepth = juce::jlimit (0.0f, 1.0f, d); }
+    void setWowRate (float hz) { wowRateSmooth.setTargetValue (juce::jlimit (0.1f, 2.0f, hz)); }
+    void setWowDepth (float d) { wowDepthSmooth.setTargetValue (juce::jlimit (0.0f, 1.0f, d)); }
 
     // Flutter (fast pitch variation) - separate rate and depth
-    void setFlutterRate (float hz) { flutterRate = juce::jlimit (2.0f, 15.0f, hz); }
-    void setFlutterDepth (float d) { flutterDepth = juce::jlimit (0.0f, 1.0f, d); }
+    void setFlutterRate (float hz) { flutterRateSmooth.setTargetValue (juce::jlimit (2.0f, 15.0f, hz)); }
+    void setFlutterDepth (float d) { flutterDepthSmooth.setTargetValue (juce::jlimit (0.0f, 1.0f, d)); }
 
     // HF loss (0-1, higher = more extreme HF attenuation)
-    void setHfLoss (float l) { hfLoss = juce::jlimit (0.0f, 1.0f, l); }
-    void setDryWet (float dw) { dryWet = juce::jlimit (0.0f, 1.0f, dw); }
+    void setHfLoss (float l) { hfLossSmooth.setTargetValue (juce::jlimit (0.0f, 1.0f, l)); }
+    void setDryWet (float dw) { dryWetSmooth.setTargetValue (juce::jlimit (0.0f, 1.0f, dw)); }
 
-    float getSaturation() const { return saturation; }
-    float getBias() const { return bias; }
-    float getWowRate() const { return wowRate; }
-    float getWowDepth() const { return wowDepth; }
-    float getFlutterRate() const { return flutterRate; }
-    float getFlutterDepth() const { return flutterDepth; }
-    float getHfLoss() const { return hfLoss; }
-    float getDryWet() const { return dryWet; }
+    float getSaturation() const { return saturationSmooth.getTargetValue(); }
+    float getBias() const { return biasSmooth.getTargetValue(); }
+    float getWowRate() const { return wowRateSmooth.getTargetValue(); }
+    float getWowDepth() const { return wowDepthSmooth.getTargetValue(); }
+    float getFlutterRate() const { return flutterRateSmooth.getTargetValue(); }
+    float getFlutterDepth() const { return flutterDepthSmooth.getTargetValue(); }
+    float getHfLoss() const { return hfLossSmooth.getTargetValue(); }
+    float getDryWet() const { return dryWetSmooth.getTargetValue(); }
 
 private:
-    // Parameters
-    float saturation = 0.3f;
-    float bias = 0.5f;
-    float wowRate = 0.5f;       // Hz (0.1-2)
-    float wowDepth = 0.0f;
-    float flutterRate = 6.0f;   // Hz (2-15)
-    float flutterDepth = 0.0f;
-    float hfLoss = 0.3f;
-    float dryWet = 0.0f;  // Fully dry by default
+    // Smoothed parameters
+    SmoothedParam saturationSmooth { 0.3f };
+    SmoothedParam biasSmooth { 0.5f };
+    SmoothedParam wowRateSmooth { 0.5f };       // Hz (0.1-2)
+    SmoothedParam wowDepthSmooth { 0.0f };
+    SmoothedParam flutterRateSmooth { 6.0f };   // Hz (2-15)
+    SmoothedParam flutterDepthSmooth { 0.0f };
+    SmoothedParam hfLossSmooth { 0.3f };
+    SmoothedParam dryWetSmooth { 0.0f };
 
     // Wow/flutter LFOs
     float wowPhase = 0.0f;
@@ -67,7 +68,7 @@ private:
     float hfStateL = 0.0f;
     float hfStateR = 0.0f;
 
-    float processSaturation (float sample);
+    float processSaturation (float sample, float saturation, float bias);
     float getInterpolatedDelay (const std::array<float, delayLineSize>& buffer, float delay) const;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TapeEffect)

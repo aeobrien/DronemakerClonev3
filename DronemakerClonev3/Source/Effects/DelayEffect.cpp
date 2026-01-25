@@ -12,6 +12,11 @@ void DelayEffect::prepareToPlay (double sr, int /*samplesPerBlock*/)
     delayLineL.resize (maxDelaySamples, 0.0f);
     delayLineR.resize (maxDelaySamples, 0.0f);
 
+    // Set up parameter smoothing (20ms smoothing time)
+    delayTimeMsSmooth.setSmoothingTime (sr, 20.0f);
+    feedbackSmooth.setSmoothingTime (sr, 10.0f);
+    dryWetSmooth.setSmoothingTime (sr, 10.0f);
+
     reset();
 }
 
@@ -24,23 +29,36 @@ void DelayEffect::reset()
     feedbackR = 0.0f;
 }
 
+float DelayEffect::readDelayInterpolated (const std::vector<float>& line, float delaySamples)
+{
+    float readPosF = static_cast<float> (writePos) - delaySamples;
+    while (readPosF < 0)
+        readPosF += maxDelaySamples;
+
+    int idx0 = static_cast<int> (readPosF) % maxDelaySamples;
+    int idx1 = (idx0 + 1) % maxDelaySamples;
+    float frac = readPosF - std::floor (readPosF);
+
+    return line[idx0] * (1.0f - frac) + line[idx1] * frac;
+}
+
 void DelayEffect::processSample (float& left, float& right)
 {
     if (! enabled || maxDelaySamples == 0)
         return;
 
-    // Calculate delay in samples
-    int delaySamples = static_cast<int> (delayTimeMs * 0.001f * sampleRate);
-    delaySamples = juce::jlimit (1, maxDelaySamples - 1, delaySamples);
+    // Get smoothed parameter values
+    float delayTimeMs = delayTimeMsSmooth.getNextValue();
+    float feedback = feedbackSmooth.getNextValue();
+    float dryWet = dryWetSmooth.getNextValue();
 
-    // Read position
-    int readPos = writePos - delaySamples;
-    if (readPos < 0)
-        readPos += maxDelaySamples;
+    // Calculate delay in samples (use float for interpolation)
+    float delaySamples = delayTimeMs * 0.001f * static_cast<float> (sampleRate);
+    delaySamples = juce::jlimit (1.0f, static_cast<float> (maxDelaySamples - 1), delaySamples);
 
-    // Read delayed samples
-    float delayedL = delayLineL[readPos];
-    float delayedR = delayLineR[readPos];
+    // Read delayed samples with interpolation
+    float delayedL = readDelayInterpolated (delayLineL, delaySamples);
+    float delayedR = readDelayInterpolated (delayLineR, delaySamples);
 
     // Store dry signal
     float dryL = left;

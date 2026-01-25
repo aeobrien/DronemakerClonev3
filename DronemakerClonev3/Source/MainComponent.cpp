@@ -70,6 +70,30 @@ MainComponent::MainComponent()
     };
     addAndMakeVisible (midiLearnButton);
 
+    // Tab buttons for Drone/Loops sections
+    auto updateTabColors = [this] {
+        droneTabButton.setColour (juce::TextButton::buttonColourId,
+            activeTab == 0 ? juce::Colour (0xff5dd6c6).withAlpha (0.3f) : juce::Colour (0xff2a2b31));
+        loopsTabButton.setColour (juce::TextButton::buttonColourId,
+            activeTab == 1 ? juce::Colour (0xff5dd6c6).withAlpha (0.3f) : juce::Colour (0xff2a2b31));
+    };
+
+    droneTabButton.onClick = [this, updateTabColors] {
+        activeTab = 0;
+        updateTabColors();
+        resized();
+    };
+    addAndMakeVisible (droneTabButton);
+
+    loopsTabButton.onClick = [this, updateTabColors] {
+        activeTab = 1;
+        updateTabColors();
+        resized();
+    };
+    addAndMakeVisible (loopsTabButton);
+
+    updateTabColors();  // Set initial colors
+
     // Master volume knob
     masterVolumeKnob.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
     masterVolumeKnob.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
@@ -316,12 +340,14 @@ MainComponent::MainComponent()
         addAndMakeVisible (loopLPLabels[i]);
 
         // Pitch selector
-        loopPitchCombos[i].addItem ("-1 oct", 1);
-        loopPitchCombos[i].addItem ("Normal", 2);
-        loopPitchCombos[i].addItem ("+1 oct", 3);
-        loopPitchCombos[i].setSelectedId (2);
+        loopPitchCombos[i].addItem ("-2 oct", 1);
+        loopPitchCombos[i].addItem ("-1 oct", 2);
+        loopPitchCombos[i].addItem ("Normal", 3);
+        loopPitchCombos[i].addItem ("+1 oct", 4);
+        loopPitchCombos[i].addItem ("+2 oct", 5);
+        loopPitchCombos[i].setSelectedId (3);
         loopPitchCombos[i].onChange = [this, i] {
-            int octave = loopPitchCombos[i].getSelectedId() - 2;
+            int octave = loopPitchCombos[i].getSelectedId() - 3;  // -2, -1, 0, +1, +2
             loopRecorder.setSlotPitchOctave (i, octave);
         };
         addAndMakeVisible (loopPitchCombos[i]);
@@ -348,21 +374,9 @@ MainComponent::MainComponent()
         };
         addAndMakeVisible (loopAutoButtons[i]);
 
-        // Info button for loop waveform display
-        loopInfoButtons[i].setButtonText ("i");
-        loopInfoButtons[i].setColour (juce::TextButton::buttonColourId, juce::Colour (0xff2a2b31));
-        loopInfoButtons[i].onClick = [this, i] {
-            auto* info = new LoopInfoDisplay (loopRecorder, i);
-            juce::DialogWindow::LaunchOptions options;
-            options.content.setOwned (info);
-            options.dialogTitle = "Loop " + juce::String (i + 1) + " Waveform";
-            options.dialogBackgroundColour = juce::Colour (0xff17181d);
-            options.escapeKeyTriggersCloseButton = true;
-            options.useNativeTitleBar = true;
-            options.resizable = false;
-            options.launchAsync();
-        };
-        addAndMakeVisible (loopInfoButtons[i]);
+        // Progress bar for loop playhead position (click to show waveform)
+        loopProgressBars[i] = std::make_unique<LoopProgressBar> (loopRecorder, i);
+        addAndMakeVisible (*loopProgressBars[i]);
 
         // Loop button
         loopButtons[i].setButtonText ("Loop " + juce::String (i + 1));
@@ -818,15 +832,12 @@ void MainComponent::paint (juce::Graphics& g)
     drawPanel (effectsArea, "", false);
     bounds.removeFromBottom (5);
 
-    // Two main columns
-    const int columnWidth = (bounds.getWidth() - 10) / 2;
-
-    auto left = bounds.removeFromLeft (columnWidth).reduced (5);
-    drawPanel (left, "Drone");
-    bounds.removeFromLeft (10);
-
-    auto right = bounds.reduced (5);
-    drawPanel (right, "Loops");
+    // Single full-width panel for active tab
+    auto mainArea = bounds.reduced (5);
+    if (activeTab == 0)
+        drawPanel (mainArea, "Drone");
+    else
+        drawPanel (mainArea, "Loops");
 
     // Draw rotated labels for drone knobs
     g.setColour (juce::Colours::lightgrey);
@@ -855,17 +866,22 @@ void MainComponent::paint (juce::Graphics& g)
         g.restoreState();
     };
 
-    // Drone section rotated labels
-    drawRotatedLabel (dryWetLabel);
-    drawRotatedLabel (smoothingLabel);
-    drawRotatedLabel (thresholdLabel);
-    drawRotatedLabel (tiltLabel);
-    drawRotatedLabel (delayLabel);
-    drawRotatedLabel (decayLabel);
-    drawRotatedLabel (historyLabel);
-    drawRotatedLabel (stereoWidthLabel);
-    drawRotatedLabel (pitchLabel);
-    drawRotatedLabel (octaveLabel);
+    // Drone section rotated labels (only when drone tab is active)
+    if (activeTab == 0)
+    {
+        drawRotatedLabel (dryWetLabel);
+        drawRotatedLabel (smoothingLabel);
+        drawRotatedLabel (thresholdLabel);
+        drawRotatedLabel (tiltLabel);
+        drawRotatedLabel (delayLabel);
+        drawRotatedLabel (decayLabel);
+        drawRotatedLabel (historyLabel);
+        drawRotatedLabel (stereoWidthLabel);
+        drawRotatedLabel (pitchLabel);
+        drawRotatedLabel (octaveLabel);
+    }
+
+    // Live/Loop mix label (always visible in header)
     drawRotatedLabel (loopMixLabel);
 
     // Master volume label (also rotated)
@@ -910,6 +926,20 @@ void MainComponent::resized()
     // Header row
     auto header = bounds.removeFromTop (35);
     header.removeFromLeft (170);  // Space for meters
+
+    // Tab buttons (center-ish)
+    droneTabButton.setBounds (header.removeFromLeft (60).reduced (2));
+    header.removeFromLeft (3);
+    loopsTabButton.setBounds (header.removeFromLeft (60).reduced (2));
+    header.removeFromLeft (15);
+
+    // Live/Loop mix knob in header
+    const int mixKnobSize = 32;
+    const int mixLabelWidth = 50;
+    loopMixLabel.setBounds (header.removeFromLeft (mixLabelWidth).reduced (0, 4));
+    loopMixLabel.setVisible (true);  // Make visible in header
+    loopMixKnob.setBounds (header.removeFromLeft (mixKnobSize).reduced (0, 2));
+    header.removeFromLeft (10);
 
     // Right side buttons
     resourcesButton.setBounds (header.removeFromRight (80));
@@ -987,122 +1017,150 @@ void MainComponent::resized()
 
     bounds.removeFromBottom (5);
 
-    // Two main columns (knobSize and labelHeight already defined above)
-    int columnWidth = (bounds.getWidth() - 10) / 2;
+    // Show/hide drone controls based on active tab
+    bool showDrone = (activeTab == 0);
+    dryWetKnob.setVisible (showDrone);
+    smoothingKnob.setVisible (showDrone);
+    thresholdKnob.setVisible (showDrone);
+    tiltKnob.setVisible (showDrone);
+    delayKnob.setVisible (showDrone);
+    decayKnob.setVisible (showDrone);
+    historyKnob.setVisible (showDrone);
+    stereoWidthKnob.setVisible (showDrone);
+    peakToggle.setVisible (showDrone);
+    phaseToggle.setVisible (showDrone);
+    pitchKnob.setVisible (showDrone);
+    octaveKnob.setVisible (showDrone);
 
+    // Show/hide loop controls based on active tab
+    bool showLoops = (activeTab == 1);
+    for (int i = 0; i < 4; ++i)
+    {
+        loopButtons[i].setVisible (showLoops);
+        loopAutoButtons[i].setVisible (showLoops);
+        loopPitchCombos[i].setVisible (showLoops);
+        loopHPSliders[i].setVisible (showLoops);
+        loopHPLabels[i].setVisible (showLoops);
+        loopLPSliders[i].setVisible (showLoops);
+        loopLPLabels[i].setVisible (showLoops);
+        loopVolumeSliders[i].setVisible (showLoops);
+        loopVolumeLabels[i].setVisible (showLoops);
+        if (loopProgressBars[i])
+            loopProgressBars[i]->setVisible (showLoops);
+    }
+    clearLoopsButton.setVisible (showLoops);
+
+    // Full width for active tab
     auto layoutKnobWithLabel = [&](juce::Slider& knob, juce::Label& label, juce::Rectangle<int>& area) {
         auto knobArea = area.removeFromLeft (knobSize + 4);
         label.setBounds (knobArea.removeFromTop (labelHeight));
         knob.setBounds (knobArea.reduced (2));
     };
 
-    // ===== DRONE SECTION (left column) =====
-    auto droneArea = bounds.removeFromLeft (columnWidth).reduced (5);
-    droneArea.removeFromTop (25);  // Title space
-
-    // Layout with rotated labels to the left of knobs
-    const int rotatedLabelWidth = 50;  // Width for rotated label area
-    const int knobWithLabel = rotatedLabelWidth + knobSize;
-
-    // Calculate equal spacing for 4 knobs per row
-    const int numKnobsPerRow = 4;
-    int droneSpacing = (droneArea.getWidth() - (numKnobsPerRow * knobWithLabel)) / (numKnobsPerRow + 1);
-
-    auto layoutRotatedKnobs = [&](juce::Rectangle<int>& rowArea, std::initializer_list<std::pair<juce::Slider*, juce::Label*>> knobs) {
-        int x = rowArea.getX() + droneSpacing;
-        for (auto& [knob, label] : knobs)
-        {
-            // Label to the left of knob (will be drawn rotated in paint)
-            label->setBounds (x, rowArea.getY(), rotatedLabelWidth, knobSize);
-            knob->setBounds (x + rotatedLabelWidth, rowArea.getY(), knobSize, knobSize);
-            x += knobWithLabel + droneSpacing;
-        }
-    };
-
-    auto droneRow1 = droneArea.removeFromTop (knobSize + 5);
-    layoutRotatedKnobs (droneRow1, {{&dryWetKnob, &dryWetLabel}, {&smoothingKnob, &smoothingLabel},
-                                     {&thresholdKnob, &thresholdLabel}, {&tiltKnob, &tiltLabel}});
-
-    auto droneRow2 = droneArea.removeFromTop (knobSize + 5);
-    layoutRotatedKnobs (droneRow2, {{&delayKnob, &delayLabel}, {&decayKnob, &decayLabel},
-                                     {&historyKnob, &historyLabel}, {&stereoWidthKnob, &stereoWidthLabel}});
-
-    droneArea.removeFromTop (3);
-    auto toggleRow = droneArea.removeFromTop (20);
-    int toggleSpacing = (droneArea.getWidth() - 220) / 3;
-    peakToggle.setBounds (toggleRow.getX() + toggleSpacing, toggleRow.getY(), 100, 18);
-    phaseToggle.setBounds (toggleRow.getX() + toggleSpacing + 110, toggleRow.getY(), 120, 18);
-
-    // Pitch controls + Live/Loop mix knob on same row
-    droneArea.removeFromTop (5);
-    auto pitchRow = droneArea.removeFromTop (knobSize + labelHeight + 18);  // Extra for value display
-    int pitchSpacing = (droneArea.getWidth() - 3 * knobWithLabel) / 4;
-    int pitchX = pitchRow.getX() + pitchSpacing;
-
-    // Semitones (with value display)
-    pitchLabel.setBounds (pitchX, pitchRow.getY(), rotatedLabelWidth, knobSize);
-    pitchKnob.setBounds (pitchX + rotatedLabelWidth, pitchRow.getY(), knobSize, knobSize + labelHeight + 4);
-    pitchX += knobWithLabel + pitchSpacing;
-
-    // Octaves (with value display)
-    octaveLabel.setBounds (pitchX, pitchRow.getY(), rotatedLabelWidth, knobSize);
-    octaveKnob.setBounds (pitchX + rotatedLabelWidth, pitchRow.getY(), knobSize, knobSize + labelHeight + 4);
-    pitchX += knobWithLabel + pitchSpacing;
-
-    // Live/Loop mix (no value display)
-    loopMixLabel.setBounds (pitchX, pitchRow.getY(), rotatedLabelWidth, knobSize);
-    loopMixKnob.setBounds (pitchX + rotatedLabelWidth, pitchRow.getY(), knobSize, knobSize);
-
-    bounds.removeFromLeft (10);
-
-    // ===== LOOPS SECTION (right column) =====
-    auto loopsArea = bounds.reduced (5);
-
-    // Title row with Clear All button on right
-    auto loopsTitleRow = loopsArea.removeFromTop (25);
-    clearLoopsButton.setBounds (loopsTitleRow.removeFromRight (70).reduced (2, 3));
-
-    loopsArea.removeFromTop (5);
-
-    // Per-loop controls - 4 horizontal strips (more vertical space now)
-    const int loopStripWidth = loopsArea.getWidth() / 4;
-    const int smallKnob = 40;
-
-    for (int i = 0; i < 4; ++i)
+    if (activeTab == 0)
     {
-        auto strip = loopsArea.removeFromLeft (loopStripWidth).reduced (3, 0);
+        // ===== DRONE SECTION (full width) =====
+        auto droneArea = bounds.reduced (5);
+        droneArea.removeFromTop (25);  // Title space
 
-        // Info button at top (small "i" button)
-        auto topRow = strip.removeFromTop (18);
-        loopInfoButtons[i].setBounds (topRow.removeFromRight (20).reduced (1, 0));
-        strip.removeFromTop (2);
+        // Layout with rotated labels to the left of knobs
+        const int rotatedLabelWidth = 50;  // Width for rotated label area
+        const int knobWithLabel = rotatedLabelWidth + knobSize;
 
-        // Loop button below info
-        loopButtons[i].setBounds (strip.removeFromTop (28).reduced (2, 0));
-        strip.removeFromTop (2);
+        // Calculate equal spacing for 4 knobs per row
+        const int numKnobsPerRow = 4;
+        int droneSpacing = (droneArea.getWidth() - (numKnobsPerRow * knobWithLabel)) / (numKnobsPerRow + 1);
 
-        // Auto button directly under loop button
-        loopAutoButtons[i].setBounds (strip.removeFromTop (20).reduced (4, 0));
-        strip.removeFromTop (2);
+        auto layoutRotatedKnobs = [&](juce::Rectangle<int>& rowArea, std::initializer_list<std::pair<juce::Slider*, juce::Label*>> knobs) {
+            int x = rowArea.getX() + droneSpacing;
+            for (auto& [knob, label] : knobs)
+            {
+                // Label to the left of knob (will be drawn rotated in paint)
+                label->setBounds (x, rowArea.getY(), rotatedLabelWidth, knobSize);
+                knob->setBounds (x + rotatedLabelWidth, rowArea.getY(), knobSize, knobSize);
+                x += knobWithLabel + droneSpacing;
+            }
+        };
 
-        // Pitch selector directly under auto button (no label)
-        loopPitchLabels[i].setVisible (false);
-        loopPitchCombos[i].setBounds (strip.removeFromTop (24).reduced (4, 0));
-        strip.removeFromTop (5);
+        auto droneRow1 = droneArea.removeFromTop (knobSize + 5);
+        layoutRotatedKnobs (droneRow1, {{&dryWetKnob, &dryWetLabel}, {&smoothingKnob, &smoothingLabel},
+                                         {&thresholdKnob, &thresholdLabel}, {&tiltKnob, &tiltLabel}});
 
-        // HP knob
-        loopHPLabels[i].setBounds (strip.removeFromTop (12));
-        loopHPSliders[i].setBounds (strip.removeFromTop (smallKnob).reduced (6, 0));
-        strip.removeFromTop (2);
+        auto droneRow2 = droneArea.removeFromTop (knobSize + 5);
+        layoutRotatedKnobs (droneRow2, {{&delayKnob, &delayLabel}, {&decayKnob, &decayLabel},
+                                         {&historyKnob, &historyLabel}, {&stereoWidthKnob, &stereoWidthLabel}});
 
-        // LP knob
-        loopLPLabels[i].setBounds (strip.removeFromTop (12));
-        loopLPSliders[i].setBounds (strip.removeFromTop (smallKnob).reduced (6, 0));
-        strip.removeFromTop (5);
+        droneArea.removeFromTop (3);
+        auto toggleRow = droneArea.removeFromTop (20);
+        int toggleSpacing = (droneArea.getWidth() - 220) / 3;
+        peakToggle.setBounds (toggleRow.getX() + toggleSpacing, toggleRow.getY(), 100, 18);
+        phaseToggle.setBounds (toggleRow.getX() + toggleSpacing + 110, toggleRow.getY(), 120, 18);
 
-        // Volume slider (vertical) - takes remaining space (taller now)
-        loopVolumeLabels[i].setBounds (strip.removeFromTop (12));
-        loopVolumeSliders[i].setBounds (strip.reduced (12, 0));
+        // Pitch controls row (Live/Loop mix is now in header)
+        droneArea.removeFromTop (5);
+        auto pitchRow = droneArea.removeFromTop (knobSize + labelHeight + 18);  // Extra for value display
+        int pitchSpacing = (droneArea.getWidth() - 2 * knobWithLabel) / 3;
+        int pitchX = pitchRow.getX() + pitchSpacing;
+
+        // Semitones (with value display)
+        pitchLabel.setBounds (pitchX, pitchRow.getY(), rotatedLabelWidth, knobSize);
+        pitchKnob.setBounds (pitchX + rotatedLabelWidth, pitchRow.getY(), knobSize, knobSize + labelHeight + 4);
+        pitchX += knobWithLabel + pitchSpacing;
+
+        // Octaves (with value display)
+        octaveLabel.setBounds (pitchX, pitchRow.getY(), rotatedLabelWidth, knobSize);
+        octaveKnob.setBounds (pitchX + rotatedLabelWidth, pitchRow.getY(), knobSize, knobSize + labelHeight + 4);
+    }
+    else
+    {
+        // ===== LOOPS SECTION (full width) =====
+        auto loopsArea = bounds.reduced (5);
+
+        // Title row with Clear All button on right
+        auto loopsTitleRow = loopsArea.removeFromTop (25);
+        clearLoopsButton.setBounds (loopsTitleRow.removeFromRight (70).reduced (2, 3));
+
+        loopsArea.removeFromTop (5);
+
+        // Per-loop controls - 4 horizontal strips (full width now)
+        const int loopStripWidth = loopsArea.getWidth() / 4;
+        const int smallKnob = 40;
+
+        for (int i = 0; i < 4; ++i)
+        {
+            auto strip = loopsArea.removeFromLeft (loopStripWidth).reduced (3, 0);
+
+            // Progress bar at top (thin bar showing playhead position)
+            loopProgressBars[i]->setBounds (strip.removeFromTop (8).reduced (2, 1));
+            strip.removeFromTop (2);
+
+            // Loop button below progress bar
+            loopButtons[i].setBounds (strip.removeFromTop (28).reduced (2, 0));
+            strip.removeFromTop (2);
+
+            // Auto button directly under loop button
+            loopAutoButtons[i].setBounds (strip.removeFromTop (20).reduced (4, 0));
+            strip.removeFromTop (2);
+
+            // Pitch selector directly under auto button (no label)
+            loopPitchLabels[i].setVisible (false);
+            loopPitchCombos[i].setBounds (strip.removeFromTop (24).reduced (4, 0));
+            strip.removeFromTop (5);
+
+            // HP knob
+            loopHPLabels[i].setBounds (strip.removeFromTop (12));
+            loopHPSliders[i].setBounds (strip.removeFromTop (smallKnob).reduced (6, 0));
+            strip.removeFromTop (2);
+
+            // LP knob
+            loopLPLabels[i].setBounds (strip.removeFromTop (12));
+            loopLPSliders[i].setBounds (strip.removeFromTop (smallKnob).reduced (6, 0));
+            strip.removeFromTop (5);
+
+            // Volume slider (vertical) - takes remaining space (taller now)
+            loopVolumeLabels[i].setBounds (strip.removeFromTop (12));
+            loopVolumeSliders[i].setBounds (strip.reduced (12, 0));
+        }
     }
 }
 
@@ -1287,6 +1345,10 @@ void MainComponent::timerCallback()
         }
 
         loopButtons[i].setColour (juce::TextButton::buttonColourId, buttonColour);
+
+        // Repaint progress bar for smooth playhead animation
+        if (loopProgressBars[i])
+            loopProgressBars[i]->repaint();
 
         // Handle volume slider automation
         bool hasLevelAutomation = loopRecorder.slotHasLevelAutomation (i);
