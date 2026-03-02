@@ -1,3 +1,0 @@
-You will be guided through the steps necessary to install PaulXStretch.
-
-PaulXStretch includes a standalone application, as well as several different audio plug-in format, and you can choose to install some or all of them.

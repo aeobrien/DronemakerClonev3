@@ -1,8 +1,0 @@
-list(APPEND SRC 
-  ${CMAKE_CURRENT_LIST_DIR}/mel.h
-	)
-list(APPEND INCL
-	${CMAKE_CURRENT_LIST_DIR}
-)
-
-
