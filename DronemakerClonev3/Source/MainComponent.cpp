@@ -17,10 +17,11 @@ MainComponent::MainComponent()
     if (err.isNotEmpty())
         DBG ("AudioDeviceManager init error: " + err);
 
-    // Set default buffer size to 2048
+    // Set default buffer size and ensure input channel is enabled
     juce::AudioDeviceManager::AudioDeviceSetup setup;
     deviceManager.getAudioDeviceSetup (setup);
     setup.bufferSize = 2048;
+    setup.inputChannels.setBit (0);
     deviceManager.setAudioDeviceSetup (setup, true);
 
     deviceManager.addAudioCallback (this);
@@ -1418,11 +1419,6 @@ void MainComponent::audioDeviceAboutToStart (juce::AudioIODevice* device)
     const int blockSize = device->getCurrentBufferSizeSamples();
     monoBuffer.setSize (1, blockSize, false, false, true);
     monoBuffer.clear();
-
-    juce::AudioDeviceManager::AudioDeviceSetup setup;
-    deviceManager.getAudioDeviceSetup (setup);
-    setup.inputChannels.setBit (0);
-    deviceManager.setAudioDeviceSetup (setup, true);
 
     currentSampleRate = device->getCurrentSampleRate();
     currentBufferSize = blockSize;
