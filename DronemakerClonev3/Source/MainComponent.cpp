@@ -126,8 +126,10 @@ MainComponent::MainComponent()
 
     // Enable MIDI input for all available devices
     auto midiInputs = juce::MidiInput::getAvailableDevices();
+    DBG ("Found " + juce::String (midiInputs.size()) + " MIDI input device(s):");
     for (const auto& input : midiInputs)
     {
+        DBG ("  -> " + input.name + " [" + input.identifier + "]");
         deviceManager.setMidiInputDeviceEnabled (input.identifier, true);
         deviceManager.addMidiInputDeviceCallback (input.identifier, this);
     }
@@ -1715,6 +1717,8 @@ void MainComponent::handleIncomingMidiMessage (juce::MidiInput* source,
                                                 const juce::MidiMessage& message)
 {
     juce::ignoreUnused (source);
+
+    DBG ("MIDI message received: " + message.getDescription());
 
     // All UI updates must happen on the message thread
     // Copy the relevant data we need
