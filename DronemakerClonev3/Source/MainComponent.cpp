@@ -1,4 +1,5 @@
 #include "MainComponent.h"
+#include <iostream>
 #include "Effects/FilterEffect.h"
 #include "Effects/DelayEffect.h"
 #include "Effects/GranularEffect.h"
@@ -126,10 +127,10 @@ MainComponent::MainComponent()
 
     // Enable MIDI input for all available devices
     auto midiInputs = juce::MidiInput::getAvailableDevices();
-    DBG ("Found " + juce::String (midiInputs.size()) + " MIDI input device(s):");
+    std::cerr << "Found " << midiInputs.size() << " MIDI input device(s):" << std::endl;
     for (const auto& input : midiInputs)
     {
-        DBG ("  -> " + input.name + " [" + input.identifier + "]");
+        std::cerr << "  -> " << input.name << " [" << input.identifier << "]" << std::endl;
         deviceManager.setMidiInputDeviceEnabled (input.identifier, true);
         deviceManager.addMidiInputDeviceCallback (input.identifier, this);
     }
@@ -1718,7 +1719,7 @@ void MainComponent::handleIncomingMidiMessage (juce::MidiInput* source,
 {
     juce::ignoreUnused (source);
 
-    DBG ("MIDI message received: " + message.getDescription());
+    std::cerr << "MIDI message received: " << message.getDescription() << std::endl;
 
     // All UI updates must happen on the message thread
     // Copy the relevant data we need
