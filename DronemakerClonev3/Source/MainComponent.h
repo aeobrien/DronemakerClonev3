@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include <map>
+#include <set>
 #include "FFTProcessor.h"
 #include "LoopRecorder.h"
 #include "LoopAutomationEditor.h"
@@ -554,6 +555,9 @@ private:
     void selectButtonForMidiLearn (juce::Button* button);
     void clearMidiLearnSelection();
     void processMidiLearn (int ccOrNote, bool isNote);  // Called from message thread
+    void refreshMidiInputs();
+    std::set<juce::String> knownMidiInputIds;
+    int midiRescanCounter = 0;
 
     // Resource monitor
     std::unique_ptr<ResourceMonitor> resourceMonitor;

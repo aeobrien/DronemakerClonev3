@@ -125,15 +125,8 @@ MainComponent::MainComponent()
     masterVolumeLabel.setText ("Master", juce::dontSendNotification);
     masterVolumeLabel.setVisible (false);  // Will be drawn rotated
 
-    // Enable MIDI input for all available devices
-    auto midiInputs = juce::MidiInput::getAvailableDevices();
-    std::cerr << "Found " << midiInputs.size() << " MIDI input device(s):" << std::endl;
-    for (const auto& input : midiInputs)
-    {
-        std::cerr << "  -> " << input.name << " [" << input.identifier << "]" << std::endl;
-        deviceManager.setMidiInputDeviceEnabled (input.identifier, true);
-        deviceManager.addMidiInputDeviceCallback (input.identifier, this);
-    }
+    // Enable MIDI input for all available devices (also re-scanned periodically in timerCallback)
+    refreshMidiInputs();
 
     // ===== DRONE SECTION =====
     // Helper for knobs with rotated labels (no value display)
@@ -527,10 +520,9 @@ MainComponent::~MainComponent()
     setLookAndFeel (nullptr);
     lookAndFeel.reset();
 
-    // Clean up MIDI callbacks
-    auto midiInputs = juce::MidiInput::getAvailableDevices();
-    for (const auto& input : midiInputs)
-        deviceManager.removeMidiInputDeviceCallback (input.identifier, this);
+    // Clean up MIDI callbacks for all devices we registered
+    for (const auto& id : knownMidiInputIds)
+        deviceManager.removeMidiInputDeviceCallback (id, this);
 
     deviceManager.removeAudioCallback (this);
 }
@@ -1587,6 +1579,13 @@ void MainComponent::audioDeviceIOCallbackWithContext (const float* const* inputC
 
 void MainComponent::timerCallback()
 {
+    // Re-scan for MIDI devices every ~2 seconds (every 60 timer ticks at 30Hz)
+    if (++midiRescanCounter >= 60)
+    {
+        midiRescanCounter = 0;
+        refreshMidiInputs();
+    }
+
     bool learnMode = midiLearnActive.load();
     bool hasSelection = midiLearnHasSelection.load();
 
@@ -1788,6 +1787,21 @@ void MainComponent::handleIncomingMidiMessage (juce::MidiInput* source,
             }
         }
     });
+}
+
+void MainComponent::refreshMidiInputs()
+{
+    auto midiInputs = juce::MidiInput::getAvailableDevices();
+    for (const auto& input : midiInputs)
+    {
+        if (knownMidiInputIds.count (input.identifier) == 0)
+        {
+            std::cerr << "MIDI input connected: " << input.name << " [" << input.identifier << "]" << std::endl;
+            deviceManager.setMidiInputDeviceEnabled (input.identifier, true);
+            deviceManager.addMidiInputDeviceCallback (input.identifier, this);
+            knownMidiInputIds.insert (input.identifier);
+        }
+    }
 }
 
 void MainComponent::toggleMidiLearnMode()
