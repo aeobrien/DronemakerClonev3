@@ -2107,40 +2107,40 @@ void MainComponent::paintPi (juce::Graphics& g)
         drawMeter ("OUT", outputLevel.load(), juce::Colour (0xff6699dd));
     }
 
-    // Effects + params combined background
-    auto effectsY = piEffectsRowY;
-    auto bottomBg = juce::Rectangle<float> (4, (float) effectsY - 2, W - 8,
-                                             (float) (getHeight() - effectsY + 2 - 3));
+    // Effects + params combined background (anchored to bottom)
+    auto bottomBg = juce::Rectangle<float> (4, (float) piEffectsRowY,
+                                             W - 8, (float) (getHeight() - piEffectsRowY - 2));
     g.setColour (PiColours::panelBg);
     g.fillRoundedRectangle (bottomBg, 10.0f);
     g.setColour (PiColours::panelBorder.withAlpha (0.4f));
     g.drawRoundedRectangle (bottomBg.reduced (0.5f), 10.0f, 1.0f);
-
-    // Divider between effects and params
-    auto dividerY = (float) (effectsY + piEffectsRowH);
-    g.setColour (PiColours::panelBorder.withAlpha (0.3f));
-    g.drawLine (20, dividerY, W - 20, dividerY, 0.5f);
 }
 
 void MainComponent::resizedPi()
 {
+    // Fixed layout heights — total must fit in 600px
+    const int headerH    = 34;
+    const int loopBtnH   = 80;
+    const int detailH    = 78;
+    const int effectsH   = 44;
+    const int paramH     = 110;  // fixed, not "remaining space"
+    const int gap        = 3;
+    // Total: 34 + 80 + 78 + 44 + 110 + 5*3 = 361 pixels used of 600
+    // Remaining 239px distributed as extra padding
+
     auto bounds = getLocalBounds();
 
-    // === Header: 34px ===
-    auto header = bounds.removeFromTop (34);
+    // === Header ===
+    auto header = bounds.removeFromTop (headerH);
     header.removeFromLeft (120);  // Space for meters
 
-    // Tab buttons on left side of header (after meters)
     droneTabButton.setVisible (true);
     droneTabButton.setBounds (header.removeFromLeft (55).reduced (2, 5));
     header.removeFromLeft (2);
     modulationTabButton.setVisible (true);
     modulationTabButton.setBounds (header.removeFromLeft (45).reduced (2, 5));
-    loopsTabButton.setVisible (false);  // loops always visible in Pi layout
+    loopsTabButton.setVisible (false);
 
-    header.removeFromLeft (10);
-
-    // Right side buttons
     auto headerRight = header;
     settingsButton.setBounds (headerRight.removeFromRight (60).reduced (2, 5));
     headerRight.removeFromRight (2);
@@ -2150,34 +2150,40 @@ void MainComponent::resizedPi()
     headerRight.removeFromRight (4);
     bypassButton.setBounds (headerRight.removeFromRight (55).reduced (2, 5));
 
-    // Hide mix/master from header — they go on Drone page
     masterVolumeKnob.setVisible (false);
     masterVolumeLabel.setVisible (false);
     loopMixKnob.setVisible (false);
     loopMixLabel.setVisible (false);
 
-    bounds.removeFromTop (4);
+    bounds.removeFromTop (gap);
 
-    // === Loop buttons: 70px ===
-    auto loopRow = bounds.removeFromTop (70).reduced (4, 0);
+    // === Loop buttons ===
+    auto loopRow = bounds.removeFromTop (loopBtnH).reduced (4, 0);
     const int loopBtnWidth = loopRow.getWidth() / 8;
     for (int i = 0; i < 8; ++i)
         piLoopButtons[i]->setBounds (loopRow.removeFromLeft (loopBtnWidth).reduced (2, 1));
 
-    bounds.removeFromTop (3);
+    bounds.removeFromTop (gap);
 
-    // === Loop detail strip: 80px ===
-    auto detailArea = bounds.removeFromTop (80).reduced (4, 0);
+    // === Loop detail strip ===
+    auto detailArea = bounds.removeFromTop (detailH).reduced (4, 0);
     piLoopDetail->setBounds (detailArea);
 
-    bounds.removeFromTop (4);
+    bounds.removeFromTop (gap);
 
-    // === Effects row + param knobs in remaining space ===
-    // Calculate: effects row = 42px, params get the rest
-    piEffectsRowY = bounds.getY();
-    piEffectsRowH = 42;
+    // === Effects + params from the BOTTOM up (anchored to bottom edge) ===
+    auto bottomBounds = getLocalBounds();
 
-    auto effectsArea = bounds.removeFromTop (piEffectsRowH).reduced (10, 3);
+    // Params area: fixed height, anchored to bottom
+    auto paramArea = bottomBounds.removeFromBottom (paramH).reduced (10, 4);
+
+    // Effects row: just above params
+    bottomBounds.removeFromBottom (gap);
+    auto effectsArea = bottomBounds.removeFromBottom (effectsH).reduced (10, 3);
+
+    piEffectsRowY = effectsArea.getY() - 2;
+    piEffectsRowH = effectsH + gap + paramH + 8;
+
     const int effectWidth = effectsArea.getWidth() / 6;
     for (int i = 0; i < 6; ++i)
     {
@@ -2185,14 +2191,10 @@ void MainComponent::resizedPi()
         effectButtons[i].setBounds (effectsArea.removeFromLeft (effectWidth).reduced (3, 1));
     }
 
-    bounds.removeFromTop (2);
-
-    // === Parameter knobs: remaining space (should be ~100px) ===
-    auto paramArea = bounds.reduced (10, 2);
+    // === Parameter knobs: fixed height ===
     const int numSlots = 8;
     const int slotWidth = paramArea.getWidth() / numSlots;
-    const int maxKnobSize = 70;
-    const int knobSize = juce::jmin (slotWidth - 10, paramArea.getHeight() - 16, maxKnobSize);
+    const int knobSize = juce::jmin (slotWidth - 8, paramArea.getHeight() - 18);
     const int labelHeight = 13;
 
     for (int i = 0; i < maxParamKnobs; ++i)
@@ -2202,26 +2204,26 @@ void MainComponent::resizedPi()
             int slotX = paramArea.getX() + i * slotWidth + (slotWidth - knobSize) / 2;
             paramLabels[i].setBounds (slotX, paramArea.getY(), knobSize, labelHeight);
             paramKnobs[i].setBounds (slotX, paramArea.getY() + labelHeight,
-                                     knobSize, paramArea.getHeight() - labelHeight - 2);
+                                     knobSize, knobSize);
         }
     }
 
     for (int i = 0; i < numActiveCombos && (numActiveKnobs + i) < numSlots; ++i)
     {
         int slot = numActiveKnobs + i;
-        int slotX = paramArea.getX() + slot * slotWidth + (slotWidth - 75) / 2;
-        paramComboLabels[i].setBounds (slotX, paramArea.getY(), 75, labelHeight);
-        paramCombos[i].setBounds (slotX, paramArea.getY() + labelHeight + 12, 75, 24);
+        int slotX = paramArea.getX() + slot * slotWidth + (slotWidth - 80) / 2;
+        paramComboLabels[i].setBounds (slotX, paramArea.getY(), 80, labelHeight);
+        paramCombos[i].setBounds (slotX, paramArea.getY() + labelHeight + 8, 80, 26);
     }
 
     for (int i = 0; i < numActiveToggles && (numActiveKnobs + numActiveCombos + i) < numSlots; ++i)
     {
         int slot = numActiveKnobs + numActiveCombos + i;
-        int slotX = paramArea.getX() + slot * slotWidth + (slotWidth - 80) / 2;
-        paramToggles[i].setBounds (slotX, paramArea.getY() + labelHeight + 12, 80, 24);
+        int slotX = paramArea.getX() + slot * slotWidth + (slotWidth - 85) / 2;
+        paramToggles[i].setBounds (slotX, paramArea.getY() + labelHeight + 8, 85, 26);
     }
 
-    // Hide desktop-only elements
+    // === Hide desktop-only elements ===
     moveLeftButton.setVisible (false);
     moveRightButton.setVisible (false);
     clearLoopsButton.setVisible (false);
@@ -2242,7 +2244,6 @@ void MainComponent::resizedPi()
             loopProgressBars[i]->setVisible (false);
     }
 
-    // Hide drone knobs (separate page)
     dryWetKnob.setVisible (false);
     smoothingKnob.setVisible (false);
     thresholdKnob.setVisible (false);
