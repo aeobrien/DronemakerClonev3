@@ -8,6 +8,7 @@
 #include "Effects/EffectsChain.h"
 #include "Modulation/ModulationManager.h"
 #include "Modulation/ModulationPanel.h"
+#include "PiLayout.h"
 
 //==============================================================================
 // Minimal, instrument-like look & feel (appearance only)
@@ -634,6 +635,17 @@ private:
     int numActiveKnobs = 0;
     int numActiveCombos = 0;
     int numActiveToggles = 0;
+
+    // ===== PI LAYOUT =====
+    bool usePiLayout = false;
+    std::array<std::unique_ptr<TouchLoopButton>, 8> piLoopButtons;
+    std::unique_ptr<LoopDetailStrip> piLoopDetail;
+    void initPiLayout();
+    void resizedPi();
+    void paintPi (juce::Graphics& g);
+    void piSelectLoop (int slot);
+    void piToggleLoop (int slot);
+    void piSyncDetailToLoop (int slot);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };
