@@ -640,6 +640,8 @@ private:
     bool usePiLayout = false;
     std::array<std::unique_ptr<TouchLoopButton>, 8> piLoopButtons;
     std::unique_ptr<LoopDetailStrip> piLoopDetail;
+    int piEffectsRowY = 0;   // computed in resizedPi, used by paintPi
+    int piEffectsRowH = 42;
     void initPiLayout();
     void resizedPi();
     void paintPi (juce::Graphics& g);

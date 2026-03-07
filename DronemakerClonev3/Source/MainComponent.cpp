@@ -583,11 +583,26 @@ void MainComponent::updateEffectButtonColors()
         effectButtons[i].setButtonText (buttonText);
 
         if (i == selectedEffectSlot)
-            effectButtons[i].setColour (juce::TextButton::buttonColourId, juce::Colour (0xff5dd6c6));
+        {
+            effectButtons[i].setColour (juce::TextButton::buttonColourId,
+                usePiLayout ? PiColours::accent.withAlpha (0.25f) : juce::Colour (0xff5dd6c6));
+            effectButtons[i].setColour (juce::TextButton::textColourOffId,
+                usePiLayout ? PiColours::accentGlow : juce::Colours::white);
+        }
         else if (enabled)
-            effectButtons[i].setColour (juce::TextButton::buttonColourId, juce::Colour (0xff1f2a27));
+        {
+            effectButtons[i].setColour (juce::TextButton::buttonColourId,
+                usePiLayout ? PiColours::buttonBg : juce::Colour (0xff1f2a27));
+            effectButtons[i].setColour (juce::TextButton::textColourOffId,
+                usePiLayout ? PiColours::textNormal : juce::Colours::white);
+        }
         else
-            effectButtons[i].setColour (juce::TextButton::buttonColourId, juce::Colour (0xff2a2b31));
+        {
+            effectButtons[i].setColour (juce::TextButton::buttonColourId,
+                usePiLayout ? juce::Colour (0xff14161c) : juce::Colour (0xff2a2b31));
+            effectButtons[i].setColour (juce::TextButton::textColourOffId,
+                usePiLayout ? PiColours::textDim : juce::Colours::white.withAlpha (0.5f));
+        }
     }
 }
 
@@ -1998,49 +2013,6 @@ void MainComponent::initPiLayout()
         };
     }
 
-    // Hide desktop-only elements
-    droneTabButton.setVisible (false);
-    loopsTabButton.setVisible (false);
-    modulationTabButton.setVisible (false);
-    moveLeftButton.setVisible (false);
-    moveRightButton.setVisible (false);
-    loopMixLabel.setVisible (false);
-    clearLoopsButton.setVisible (false);
-
-    // Hide all per-loop desktop controls (we use piLoopDetail instead)
-    for (int i = 0; i < 8; ++i)
-    {
-        loopButtons[i].setVisible (false);
-        loopAutoButtons[i].setVisible (false);
-        loopPitchCombos[i].setVisible (false);
-        loopPitchLabels[i].setVisible (false);
-        loopHPSliders[i].setVisible (false);
-        loopHPLabels[i].setVisible (false);
-        loopLPSliders[i].setVisible (false);
-        loopLPLabels[i].setVisible (false);
-        loopVolumeSliders[i].setVisible (false);
-        loopVolumeLabels[i].setVisible (false);
-        if (loopProgressBars[i])
-            loopProgressBars[i]->setVisible (false);
-    }
-
-    // Hide drone knobs (they go on a separate page)
-    dryWetKnob.setVisible (false);
-    smoothingKnob.setVisible (false);
-    thresholdKnob.setVisible (false);
-    tiltKnob.setVisible (false);
-    delayKnob.setVisible (false);
-    decayKnob.setVisible (false);
-    historyKnob.setVisible (false);
-    stereoWidthKnob.setVisible (false);
-    peakToggle.setVisible (false);
-    phaseToggle.setVisible (false);
-    pitchKnob.setVisible (false);
-    octaveKnob.setVisible (false);
-
-    if (modulationPanel)
-        modulationPanel->setVisible (false);
-
     // Select loop 0 by default
     piSelectLoop (0);
 }
@@ -2087,129 +2059,141 @@ void MainComponent::piSyncDetailToLoop (int slot)
 
 void MainComponent::paintPi (juce::Graphics& g)
 {
-    g.fillAll (juce::Colour (0xff101114));
+    g.fillAll (PiColours::bg);
 
-    const auto border = juce::Colours::white.withAlpha (0.06f);
+    const float W = (float) getWidth();
 
-    // Header background
-    auto headerBg = juce::Rectangle<float> (0, 0, (float) getWidth(), 35.0f);
-    g.setColour (juce::Colour (0xff1d1f26));
-    g.fillRect (headerBg);
-    g.setColour (border);
-    g.drawLine (0, 35, (float) getWidth(), 35);
+    // Header background with subtle gradient
+    {
+        auto headerRect = juce::Rectangle<float> (0, 0, W, 34.0f);
+        g.setColour (juce::Colour (0xff181c24));
+        g.fillRect (headerRect);
+        g.setColour (PiColours::panelBorder.withAlpha (0.5f));
+        g.drawLine (0, 34, W, 34, 1.0f);
+    }
 
     // Input / Output meters
     {
-        const int meterX = 10;
-        int meterY = 8;
-        const int meterW = 100;
+        const int meterX = 8;
+        int meterY = 7;
+        const int meterW = 90;
         const int meterH = 8;
 
         auto drawMeter = [&](const juce::String& label, float value, juce::Colour colour)
         {
-            g.setColour (juce::Colours::white.withAlpha (0.06f));
-            g.fillRoundedRectangle ((float) (meterX + 20), (float) meterY, (float) meterW, (float) meterH, 3.0f);
+            auto bgRect = juce::Rectangle<float> ((float) (meterX + 22), (float) meterY,
+                                                   (float) meterW, (float) meterH);
+            g.setColour (juce::Colour (0xff0a0c10));
+            g.fillRoundedRectangle (bgRect, 3.0f);
+            g.setColour (PiColours::panelBorder.withAlpha (0.3f));
+            g.drawRoundedRectangle (bgRect, 3.0f, 0.5f);
 
             float v = juce::jlimit (0.0f, 1.0f, value);
-            g.setColour (colour.withAlpha (0.85f));
-            g.fillRoundedRectangle ((float) (meterX + 20), (float) meterY, (float) meterW * v, (float) meterH, 3.0f);
+            if (v > 0.001f)
+            {
+                auto fillRect = bgRect.withWidth (bgRect.getWidth() * v);
+                g.setColour (colour.withAlpha (0.8f));
+                g.fillRoundedRectangle (fillRect, 3.0f);
+            }
 
-            g.setColour (juce::Colours::white.withAlpha (0.5f));
+            g.setColour (PiColours::textDim);
             g.setFont (juce::Font (9.0f, juce::Font::bold));
-            g.drawText (label, meterX, meterY - 1, 18, meterH + 2, juce::Justification::centredLeft);
+            g.drawText (label, meterX, meterY - 1, 20, meterH + 2, juce::Justification::centredLeft);
 
-            meterY += meterH + 3;
+            meterY += meterH + 4;
         };
 
-        drawMeter ("IN",  inputLevel.load(),  juce::Colour (0xff5dd6c6));
-        drawMeter ("OUT", outputLevel.load(), juce::Colour (0xff7aa7ff));
+        drawMeter ("IN",  inputLevel.load(),  PiColours::accent);
+        drawMeter ("OUT", outputLevel.load(), juce::Colour (0xff6699dd));
     }
 
-    // Effects row background
-    auto effectsY = 35 + 80 + 5 + 95 + 5;  // header + loops + gap + detail + gap
-    auto effectsBg = juce::Rectangle<float> (5, (float) effectsY, (float) getWidth() - 10, 50);
-    g.setColour (juce::Colour (0xff17181d));
-    g.fillRoundedRectangle (effectsBg, 8.0f);
-    g.setColour (border);
-    g.drawRoundedRectangle (effectsBg.reduced (0.5f), 8.0f, 1.0f);
+    // Effects + params combined background
+    auto effectsY = piEffectsRowY;
+    auto bottomBg = juce::Rectangle<float> (4, (float) effectsY - 2, W - 8,
+                                             (float) (getHeight() - effectsY + 2 - 3));
+    g.setColour (PiColours::panelBg);
+    g.fillRoundedRectangle (bottomBg, 10.0f);
+    g.setColour (PiColours::panelBorder.withAlpha (0.4f));
+    g.drawRoundedRectangle (bottomBg.reduced (0.5f), 10.0f, 1.0f);
 
-    // Param knobs background
-    auto paramsY = effectsY + 55;
-    auto paramsBg = juce::Rectangle<float> (5, (float) paramsY, (float) getWidth() - 10, (float) (getHeight() - paramsY - 5));
-    g.setColour (juce::Colour (0xff17181d));
-    g.fillRoundedRectangle (paramsBg, 8.0f);
-    g.setColour (border);
-    g.drawRoundedRectangle (paramsBg.reduced (0.5f), 8.0f, 1.0f);
+    // Divider between effects and params
+    auto dividerY = (float) (effectsY + piEffectsRowH);
+    g.setColour (PiColours::panelBorder.withAlpha (0.3f));
+    g.drawLine (20, dividerY, W - 20, dividerY, 0.5f);
 }
 
 void MainComponent::resizedPi()
 {
     auto bounds = getLocalBounds();
-    const int W = bounds.getWidth();
 
-    // === Header: 35px ===
-    auto header = bounds.removeFromTop (35);
-    header.removeFromLeft (135);  // Space for meters
+    // === Header: 34px ===
+    auto header = bounds.removeFromTop (34);
+    header.removeFromLeft (120);  // Space for meters
 
-    // Header buttons
+    // Tab buttons on left side of header (after meters)
+    droneTabButton.setVisible (true);
+    droneTabButton.setBounds (header.removeFromLeft (55).reduced (2, 5));
+    header.removeFromLeft (2);
+    modulationTabButton.setVisible (true);
+    modulationTabButton.setBounds (header.removeFromLeft (45).reduced (2, 5));
+    loopsTabButton.setVisible (false);  // loops always visible in Pi layout
+
+    header.removeFromLeft (10);
+
+    // Right side buttons
     auto headerRight = header;
-    resourcesButton.setBounds (headerRight.removeFromRight (75).reduced (3));
-    settingsButton.setBounds (headerRight.removeFromRight (65).reduced (3));
-    headerRight.removeFromRight (5);
-    midiLearnButton.setBounds (headerRight.removeFromRight (80).reduced (3));
-    headerRight.removeFromRight (5);
-    bypassButton.setBounds (headerRight.removeFromRight (60).reduced (3));
-    headerRight.removeFromRight (10);
+    settingsButton.setBounds (headerRight.removeFromRight (60).reduced (2, 5));
+    headerRight.removeFromRight (2);
+    resourcesButton.setBounds (headerRight.removeFromRight (65).reduced (2, 5));
+    headerRight.removeFromRight (2);
+    midiLearnButton.setBounds (headerRight.removeFromRight (72).reduced (2, 5));
+    headerRight.removeFromRight (4);
+    bypassButton.setBounds (headerRight.removeFromRight (55).reduced (2, 5));
 
-    // Mix and master knobs in header
-    masterVolumeKnob.setBounds (headerRight.removeFromRight (32).reduced (0, 2));
-    masterVolumeLabel.setBounds (headerRight.removeFromRight (40).reduced (0, 4));
-    masterVolumeLabel.setVisible (true);
-    headerRight.removeFromRight (5);
-    loopMixKnob.setBounds (headerRight.removeFromRight (32).reduced (0, 2));
-    loopMixKnob.setVisible (true);
+    // Hide mix/master from header — they go on Drone page
+    masterVolumeKnob.setVisible (false);
+    masterVolumeLabel.setVisible (false);
+    loopMixKnob.setVisible (false);
+    loopMixLabel.setVisible (false);
 
-    // Drone and Mod buttons (navigate to sub-pages)
-    droneTabButton.setVisible (false);
-    loopsTabButton.setVisible (false);
-    modulationTabButton.setVisible (false);
+    bounds.removeFromTop (4);
 
-    bounds.removeFromTop (5);
-
-    // === Loop buttons: 80px ===
-    auto loopRow = bounds.removeFromTop (80);
-    loopRow = loopRow.reduced (5, 0);
+    // === Loop buttons: 70px ===
+    auto loopRow = bounds.removeFromTop (70).reduced (4, 0);
     const int loopBtnWidth = loopRow.getWidth() / 8;
     for (int i = 0; i < 8; ++i)
-    {
-        piLoopButtons[i]->setBounds (loopRow.removeFromLeft (loopBtnWidth).reduced (3, 2));
-    }
+        piLoopButtons[i]->setBounds (loopRow.removeFromLeft (loopBtnWidth).reduced (2, 1));
 
-    bounds.removeFromTop (5);
+    bounds.removeFromTop (3);
 
-    // === Loop detail strip: 95px ===
-    auto detailArea = bounds.removeFromTop (95).reduced (5, 0);
+    // === Loop detail strip: 80px ===
+    auto detailArea = bounds.removeFromTop (80).reduced (4, 0);
     piLoopDetail->setBounds (detailArea);
 
-    bounds.removeFromTop (5);
+    bounds.removeFromTop (4);
 
-    // === Effects row: 50px ===
-    auto effectsArea = bounds.removeFromTop (50).reduced (8, 3);
+    // === Effects row + param knobs in remaining space ===
+    // Calculate: effects row = 42px, params get the rest
+    piEffectsRowY = bounds.getY();
+    piEffectsRowH = 42;
+
+    auto effectsArea = bounds.removeFromTop (piEffectsRowH).reduced (10, 3);
     const int effectWidth = effectsArea.getWidth() / 6;
     for (int i = 0; i < 6; ++i)
     {
         effectButtons[i].setVisible (true);
-        effectButtons[i].setBounds (effectsArea.removeFromLeft (effectWidth).reduced (3, 2));
+        effectButtons[i].setBounds (effectsArea.removeFromLeft (effectWidth).reduced (3, 1));
     }
 
-    bounds.removeFromTop (5);
+    bounds.removeFromTop (2);
 
-    // === Parameter knobs: remaining space ===
-    auto paramArea = bounds.reduced (8, 5);
+    // === Parameter knobs: remaining space (should be ~100px) ===
+    auto paramArea = bounds.reduced (10, 2);
     const int numSlots = 8;
     const int slotWidth = paramArea.getWidth() / numSlots;
-    const int knobSize = juce::jmin (slotWidth - 8, paramArea.getHeight() - 20);
-    const int labelHeight = 14;
+    const int maxKnobSize = 70;
+    const int knobSize = juce::jmin (slotWidth - 10, paramArea.getHeight() - 16, maxKnobSize);
+    const int labelHeight = 13;
 
     for (int i = 0; i < maxParamKnobs; ++i)
     {
@@ -2218,23 +2202,60 @@ void MainComponent::resizedPi()
             int slotX = paramArea.getX() + i * slotWidth + (slotWidth - knobSize) / 2;
             paramLabels[i].setBounds (slotX, paramArea.getY(), knobSize, labelHeight);
             paramKnobs[i].setBounds (slotX, paramArea.getY() + labelHeight,
-                                     knobSize, paramArea.getHeight() - labelHeight - 5);
+                                     knobSize, paramArea.getHeight() - labelHeight - 2);
         }
     }
 
-    // Position combos and toggles in remaining slots
     for (int i = 0; i < numActiveCombos && (numActiveKnobs + i) < numSlots; ++i)
     {
         int slot = numActiveKnobs + i;
         int slotX = paramArea.getX() + slot * slotWidth + (slotWidth - 75) / 2;
         paramComboLabels[i].setBounds (slotX, paramArea.getY(), 75, labelHeight);
-        paramCombos[i].setBounds (slotX, paramArea.getY() + labelHeight + 15, 75, 24);
+        paramCombos[i].setBounds (slotX, paramArea.getY() + labelHeight + 12, 75, 24);
     }
 
     for (int i = 0; i < numActiveToggles && (numActiveKnobs + numActiveCombos + i) < numSlots; ++i)
     {
         int slot = numActiveKnobs + numActiveCombos + i;
         int slotX = paramArea.getX() + slot * slotWidth + (slotWidth - 80) / 2;
-        paramToggles[i].setBounds (slotX, paramArea.getY() + labelHeight + 15, 80, 24);
+        paramToggles[i].setBounds (slotX, paramArea.getY() + labelHeight + 12, 80, 24);
     }
+
+    // Hide desktop-only elements
+    moveLeftButton.setVisible (false);
+    moveRightButton.setVisible (false);
+    clearLoopsButton.setVisible (false);
+
+    for (int i = 0; i < 8; ++i)
+    {
+        loopButtons[i].setVisible (false);
+        loopAutoButtons[i].setVisible (false);
+        loopPitchCombos[i].setVisible (false);
+        loopPitchLabels[i].setVisible (false);
+        loopHPSliders[i].setVisible (false);
+        loopHPLabels[i].setVisible (false);
+        loopLPSliders[i].setVisible (false);
+        loopLPLabels[i].setVisible (false);
+        loopVolumeSliders[i].setVisible (false);
+        loopVolumeLabels[i].setVisible (false);
+        if (loopProgressBars[i])
+            loopProgressBars[i]->setVisible (false);
+    }
+
+    // Hide drone knobs (separate page)
+    dryWetKnob.setVisible (false);
+    smoothingKnob.setVisible (false);
+    thresholdKnob.setVisible (false);
+    tiltKnob.setVisible (false);
+    delayKnob.setVisible (false);
+    decayKnob.setVisible (false);
+    historyKnob.setVisible (false);
+    stereoWidthKnob.setVisible (false);
+    peakToggle.setVisible (false);
+    phaseToggle.setVisible (false);
+    pitchKnob.setVisible (false);
+    octaveKnob.setVisible (false);
+
+    if (modulationPanel)
+        modulationPanel->setVisible (false);
 }
