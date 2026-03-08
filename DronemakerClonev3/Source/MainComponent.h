@@ -638,6 +638,7 @@ private:
 
     // ===== PI LAYOUT =====
     bool usePiLayout = false;
+    bool piLoopMode = true;  // true = knobs control loops, false = knobs control effects
     std::array<std::unique_ptr<TouchLoopButton>, 8> piLoopButtons;
     std::unique_ptr<LoopDetailStrip> piLoopDetail;
     int piEffectsRowY = 0;   // computed in resizedPi, used by paintPi
@@ -648,6 +649,10 @@ private:
     void piSelectLoop (int slot);
     void piToggleLoop (int slot);
     void piSyncDetailToLoop (int slot);
+    void piSelectEffect (int slot);
+    void updateLoopParameterKnobs();     // populate knobs 1-8 for loop mode
+    void updateDroneParameterKnobs();    // populate knobs for drone tab
+    int piDroneKnobPage = 0;            // 0 = first 8 params, 1 = remaining
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };

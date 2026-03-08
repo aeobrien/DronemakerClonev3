@@ -48,6 +48,8 @@ void LoopRecorder::startRecording (int slot)
     s.isPlaying = false;
     s.hpState = 0.0f;
     s.lpState = 0.0f;
+    s.trimStart = 0.0f;
+    s.trimEnd = 1.0f;
     s.automationLevel = 1.0f;
     s.executor.cancel();
     // Recalculate max samples in case settings changed
@@ -145,7 +147,7 @@ void LoopRecorder::recordSample (float sample)
 void LoopRecorder::setSlotVolume (int slot, float vol)
 {
     if (slot >= 0 && slot < numSlots)
-        slots[slot].volume = juce::jlimit (0.0f, 1.0f, vol);
+        slots[slot].volume = juce::jlimit (0.0f, 2.0f, vol);
 }
 
 void LoopRecorder::setSlotHighPass (int slot, float freqHz)
@@ -164,6 +166,49 @@ void LoopRecorder::setSlotPitchOctave (int slot, int octave)
 {
     if (slot >= 0 && slot < numSlots)
         slots[slot].pitchOctave = juce::jlimit (-2, 2, octave);
+}
+
+void LoopRecorder::setSlotTrimStart (int slot, float normalised)
+{
+    if (slot >= 0 && slot < numSlots)
+    {
+        auto& s = slots[slot];
+        s.trimStart = juce::jlimit (0.0f, s.trimEnd - 0.01f, normalised);
+    }
+}
+
+void LoopRecorder::setSlotTrimEnd (int slot, float normalised)
+{
+    if (slot >= 0 && slot < numSlots)
+    {
+        auto& s = slots[slot];
+        s.trimEnd = juce::jlimit (s.trimStart + 0.01f, 1.0f, normalised);
+    }
+}
+
+float LoopRecorder::getSlotTrimStart (int slot) const
+{
+    if (slot >= 0 && slot < numSlots)
+        return slots[slot].trimStart;
+    return 0.0f;
+}
+
+float LoopRecorder::getSlotTrimEnd (int slot) const
+{
+    if (slot >= 0 && slot < numSlots)
+        return slots[slot].trimEnd;
+    return 1.0f;
+}
+
+int LoopRecorder::getSlotEffectiveLength (int slot) const
+{
+    if (slot < 0 || slot >= numSlots)
+        return 0;
+    const auto& s = slots[slot];
+    if (s.length <= 0) return 0;
+    int startSample = (int) (s.trimStart * s.length);
+    int endSample   = (int) (s.trimEnd * s.length);
+    return juce::jmax (1, endSample - startSample);
 }
 
 void LoopRecorder::setSlotVolumeMod (int slot, float mod)
@@ -221,41 +266,50 @@ float LoopRecorder::getLoopMix()
         // Only mix if hasContent AND isPlaying
         if (slot.hasContent && slot.isPlaying && slot.length > 0)
         {
+            // Trim region
+            int startSample = (int) (slot.trimStart * slot.length);
+            int endSample   = (int) (slot.trimEnd * slot.length);
+            int effectiveLen = juce::jmax (1, endSample - startSample);
+
             // Get playback rate based on pitch octave
-            // Each octave doubles/halves the playback rate
             double playbackRate = std::pow (2.0, slot.pitchOctave);
 
             // Read sample with interpolation
             float sample = getInterpolatedSample (slot, slot.playPosition);
 
             // Calculate modulated filter frequencies
-            // Modulation is in octaves: mod of 1.0 = double freq, -1.0 = half freq
-            float modulatedHpFreq = slot.hpFreq * std::pow (2.0f, slot.hpFreqMod * 4.0f);  // ±4 octaves range
+            float modulatedHpFreq = slot.hpFreq * std::pow (2.0f, slot.hpFreqMod * 4.0f);
             float modulatedLpFreq = slot.lpFreq * std::pow (2.0f, slot.lpFreqMod * 4.0f);
             modulatedHpFreq = juce::jlimit (20.0f, 5000.0f, modulatedHpFreq);
             modulatedLpFreq = juce::jlimit (200.0f, 20000.0f, modulatedLpFreq);
 
-            // Apply high-pass filter (simple one-pole)
-            // HP: output = input - lowpass(input)
+            // Apply high-pass filter
             float hpCoeff = 1.0f - std::exp (-2.0f * juce::MathConstants<float>::pi * modulatedHpFreq / static_cast<float> (currentSampleRate));
             slot.hpState += hpCoeff * (sample - slot.hpState);
             float hpOutput = sample - slot.hpState;
 
-            // Apply low-pass filter (simple one-pole)
+            // Apply low-pass filter
             float lpCoeff = 1.0f - std::exp (-2.0f * juce::MathConstants<float>::pi * modulatedLpFreq / static_cast<float> (currentSampleRate));
             slot.lpState += lpCoeff * (hpOutput - slot.lpState);
             float filtered = slot.lpState;
 
             // Apply volume with modulation AND automation level
-            // Volume modulation adds to base volume (clamped to 0-1)
-            float modulatedVolume = juce::jlimit (0.0f, 1.0f, slot.volume + slot.volumeMod);
-            mix += filtered * modulatedVolume * slot.automationLevel;
+            float modulatedVolume = juce::jlimit (0.0f, 2.0f, slot.volume + slot.volumeMod);
+            float slotOutput = filtered * modulatedVolume * slot.automationLevel;
+            slot.lastFilteredSample = slotOutput;
+            mix += slotOutput;
             activeCount++;
 
-            // Advance play position based on pitch
+            // Advance play position, wrapping within trim region
             slot.playPosition += playbackRate;
-            if (slot.playPosition >= slot.length)
-                slot.playPosition -= slot.length;
+            if (slot.playPosition >= endSample)
+                slot.playPosition = startSample + std::fmod (slot.playPosition - startSample, (double) effectiveLen);
+            if (slot.playPosition < startSample)
+                slot.playPosition = startSample;
+        }
+        else
+        {
+            slot.lastFilteredSample = 0.0f;
         }
     }
 
@@ -297,7 +351,12 @@ float LoopRecorder::getSlotProgress (int slot) const
     if (!s.hasContent || s.length == 0)
         return 0.0f;
 
-    return static_cast<float> (s.playPosition) / static_cast<float> (s.length);
+    // Report progress within trim region
+    int startSample = (int) (s.trimStart * s.length);
+    int endSample   = (int) (s.trimEnd * s.length);
+    int effectiveLen = juce::jmax (1, endSample - startSample);
+    float pos = (float) (s.playPosition - startSample) / (float) effectiveLen;
+    return juce::jlimit (0.0f, 1.0f, pos);
 }
 
 void LoopRecorder::setSlotSettings (int slot, const LoopSettings& settings)
@@ -387,6 +446,13 @@ bool LoopRecorder::slotHasLevelAutomation (int slot) const
             return true;
     }
     return false;
+}
+
+float LoopRecorder::getSlotLastFilteredSample (int slot) const
+{
+    if (slot < 0 || slot >= numSlots)
+        return 0.0f;
+    return slots[slot].lastFilteredSample;
 }
 
 float LoopRecorder::getSampleAtIndex (int slot, int index) const

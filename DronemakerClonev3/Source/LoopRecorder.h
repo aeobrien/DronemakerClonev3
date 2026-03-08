@@ -41,6 +41,11 @@ public:
     void setSlotHighPass (int slot, float freqHz);
     void setSlotLowPass (int slot, float freqHz);
     void setSlotPitchOctave (int slot, int octave);  // -1, 0, or +1
+    void setSlotTrimStart (int slot, float normalised);  // 0.0–1.0
+    void setSlotTrimEnd (int slot, float normalised);    // 0.0–1.0
+    float getSlotTrimStart (int slot) const;
+    float getSlotTrimEnd (int slot) const;
+    int getSlotEffectiveLength (int slot) const;         // trimmed length in samples
 
     // Modulation offsets (added to base parameters)
     void setSlotVolumeMod (int slot, float mod);
@@ -77,6 +82,9 @@ public:
     // Get a sample at a specific index from a slot's buffer (for waveform display)
     float getSampleAtIndex (int slot, int index) const;
 
+    // Get the last filtered output sample for a slot (post HP/LP, post volume, updated each getLoopMix call)
+    float getSlotLastFilteredSample (int slot) const;
+
     // Get the current sample rate
     double getSampleRate() const { return currentSampleRate; }
 
@@ -94,6 +102,8 @@ private:
         float hpFreq = 20.0f;        // High-pass cutoff Hz
         float lpFreq = 20000.0f;     // Low-pass cutoff Hz
         int pitchOctave = 0;         // -1, 0, or +1
+        float trimStart = 0.0f;      // 0.0–1.0 normalised start point
+        float trimEnd   = 1.0f;      // 0.0–1.0 normalised end point
 
         // Modulation offsets
         float volumeMod = 0.0f;      // Added to volume
@@ -105,6 +115,7 @@ private:
         float lpState = 0.0f;
 
         // Automation
+        float lastFilteredSample = 0.0f; // Post-filter output for visualiser
         LoopSettings settings;              // Per-loop recording settings
         LoopSequenceExecutor executor;      // Runtime automation executor
         float automationLevel = 1.0f;       // Current level from automation (0.0-1.0)

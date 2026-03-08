@@ -60,8 +60,19 @@ MainComponent::MainComponent()
     bypassButton.onClick = [this] {
         bool newState = !masterBypass.load();
         masterBypass.store (newState);
-        bypassButton.setColour (juce::TextButton::buttonColourId,
-                                 newState ? juce::Colours::red : juce::Colour (0xff2a2b31));
+        if (usePiLayout)
+        {
+            bypassButton.setButtonText (newState ? "OFF" : "ON");
+            bypassButton.setColour (juce::TextButton::buttonColourId,
+                                     newState ? PiColours::recording.withAlpha (0.3f) : PiColours::buttonBg);
+            bypassButton.setColour (juce::TextButton::textColourOffId,
+                                     newState ? PiColours::recording : PiColours::textNormal);
+        }
+        else
+        {
+            bypassButton.setColour (juce::TextButton::buttonColourId,
+                                     newState ? juce::Colours::red : juce::Colour (0xff2a2b31));
+        }
     };
     addAndMakeVisible (bypassButton);
 
@@ -587,7 +598,7 @@ void MainComponent::updateEffectButtonColors()
             effectButtons[i].setColour (juce::TextButton::buttonColourId,
                 usePiLayout ? PiColours::accent.withAlpha (0.25f) : juce::Colour (0xff5dd6c6));
             effectButtons[i].setColour (juce::TextButton::textColourOffId,
-                usePiLayout ? PiColours::accentGlow : juce::Colours::white);
+                usePiLayout ? PiColours::accentBright : juce::Colours::white);
         }
         else if (enabled)
         {
@@ -608,6 +619,13 @@ void MainComponent::updateEffectButtonColors()
 
 void MainComponent::updateEffectParameterKnobs()
 {
+    // If we're in Pi loop mode, delegate to loop knobs instead
+    if (usePiLayout && piLoopMode)
+    {
+        updateLoopParameterKnobs();
+        return;
+    }
+
     // Hide all existing param controls
     for (int i = 0; i < maxParamKnobs; ++i)
     {
@@ -653,8 +671,16 @@ void MainComponent::updateEffectParameterKnobs()
         numActiveKnobs++;
     };
 
-    auto addCombo = [this](const juce::String& name, juce::StringArray items, int selectedIdx,
+    // On Pi, everything is a knob. On desktop, keep combos/toggles.
+    auto addCombo = [this, &addKnob](const juce::String& name, juce::StringArray items, int selectedIdx,
                            std::function<void(int)> onChange) {
+        if (usePiLayout)
+        {
+            // Render as a discrete knob (0 to N-1)
+            addKnob (name, 0, items.size() - 1, 1, selectedIdx,
+                     [onChange](float v) { onChange ((int) v); });
+            return;
+        }
         if (numActiveCombos >= 4) return;
         auto& combo = paramCombos[numActiveCombos];
         auto& label = paramComboLabels[numActiveCombos];
@@ -672,7 +698,14 @@ void MainComponent::updateEffectParameterKnobs()
         numActiveCombos++;
     };
 
-    auto addToggle = [this](const juce::String& name, bool value, std::function<void(bool)> onChange) {
+    auto addToggle = [this, &addKnob](const juce::String& name, bool value, std::function<void(bool)> onChange) {
+        if (usePiLayout)
+        {
+            // Render as a knob: 0 = off, 1 = on
+            addKnob (name, 0, 1, 1, value ? 1.0 : 0.0,
+                     [onChange](float v) { onChange (v >= 0.5f); });
+            return;
+        }
         if (numActiveToggles >= 4) return;
         auto& toggle = paramToggles[numActiveToggles];
 
@@ -699,7 +732,7 @@ void MainComponent::updateEffectParameterKnobs()
                          [fx](float v) { fx->setLowPassPoles ((int) v); });
                 addKnob ("Harmonic", 0, 1, 0.01, fx->getHarmonicIntensity(),
                          [fx](float v) { fx->setHarmonicIntensity (v); });
-                addToggle ("Harmonic On", fx->isHarmonicEnabled(),
+                addToggle ("Harm On", fx->isHarmonicEnabled(),
                            [fx](bool v) { fx->setHarmonicEnabled (v); });
                 addCombo ("Root", { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" },
                           fx->getRootNote(), [fx](int v) { fx->setRootNote (v); });
@@ -717,7 +750,7 @@ void MainComponent::updateEffectParameterKnobs()
                          [fx](float v) { fx->setFeedback (v); });
                 addKnob ("Dry/Wet", 0, 1, 0.01, fx->getDryWet(),
                          [fx](float v) { fx->setDryWet (v); });
-                addToggle ("Ping-Pong", fx->isPingPong(),
+                addToggle ("Ping Pong", fx->isPingPong(),
                            [fx](bool v) { fx->setPingPong (v); });
             }
             break;
@@ -1554,6 +1587,17 @@ void MainComponent::audioDeviceIOCallbackWithContext (const float* const* inputC
 
             float loopSample = hasLoops ? loopRecorder.getLoopMix() : 0.0f;
 
+            // Feed spectrum visualiser on Pi — per-loop (post filter) or master output
+            if (usePiLayout && piLoopDetail)
+            {
+                if (piLoopMode)
+                {
+                    int sel = TouchLoopButton::selectedSlot;
+                    piLoopDetail->pushVisSample (loopRecorder.getSlotLastFilteredSample (sel));
+                }
+                // else: we'll push master output after processing below
+            }
+
             // Crossfade between live and loops based on mix
             fftInput = liveSample * (1.0f - currentMix) + loopSample * currentMix;
 
@@ -1595,6 +1639,10 @@ void MainComponent::audioDeviceIOCallbackWithContext (const float* const* inputC
             // Apply master volume
             outL *= currentVolume;
             outR *= currentVolume;
+
+            // Feed master output to spectrum visualiser in effect mode
+            if (usePiLayout && piLoopDetail && !piLoopMode)
+                piLoopDetail->pushVisSample ((outL + outR) * 0.5f);
 
             outputSum += outL * outL + outR * outR;
 
@@ -1953,7 +2001,12 @@ void MainComponent::initPiLayout()
     for (int i = 0; i < 8; ++i)
     {
         piLoopButtons[i] = std::make_unique<TouchLoopButton> (loopRecorder, i);
-        piLoopButtons[i]->onSelect = [this](int slot) { piSelectLoop (slot); };
+        piLoopButtons[i]->onSelect = [this](int slot) {
+            // Short tap on a recording slot stops the recording
+            if (loopRecorder.isRecording() && loopRecorder.getRecordingSlot() == slot)
+                loopRecorder.stopRecording();
+            piSelectLoop (slot);
+        };
         piLoopButtons[i]->onToggle = [this](int slot) { piToggleLoop (slot); };
         addAndMakeVisible (*piLoopButtons[i]);
     }
@@ -1966,23 +2019,7 @@ void MainComponent::initPiLayout()
     piLoopDetail->octaveSelector.onChange = [this](int octave) {
         int slot = piLoopDetail->getSelectedLoop();
         loopRecorder.setSlotPitchOctave (slot, octave);
-        // Keep the underlying combo in sync (for MIDI mapping etc.)
         loopPitchCombos[slot].setSelectedId (octave + 3, juce::dontSendNotification);
-    };
-
-    piLoopDetail->hpSlider.onValueChange = [this]() {
-        int slot = piLoopDetail->getSelectedLoop();
-        loopRecorder.setSlotHighPass (slot, (float) piLoopDetail->hpSlider.getValue());
-    };
-
-    piLoopDetail->lpSlider.onValueChange = [this]() {
-        int slot = piLoopDetail->getSelectedLoop();
-        loopRecorder.setSlotLowPass (slot, (float) piLoopDetail->lpSlider.getValue());
-    };
-
-    piLoopDetail->volSlider.onValueChange = [this]() {
-        int slot = piLoopDetail->getSelectedLoop();
-        loopRecorder.setSlotVolume (slot, (float) piLoopDetail->volSlider.getValue());
     };
 
     piLoopDetail->autoButton.onClick = [this]() {
@@ -2003,27 +2040,143 @@ void MainComponent::initPiLayout()
         loopRecorder.clearSlot (slot);
     };
 
-    // Effect buttons: on Pi, short tap selects, long press toggles enable
+    // Override tab buttons for Pi layout
+    auto piUpdateTabColors = [this] {
+        droneTabButton.setColour (juce::TextButton::buttonColourId,
+            activeTab == 0 ? PiColours::accent.withAlpha (0.25f) : PiColours::buttonBg);
+        droneTabButton.setColour (juce::TextButton::textColourOffId,
+            activeTab == 0 ? PiColours::accentBright : PiColours::textNormal);
+        modulationTabButton.setColour (juce::TextButton::buttonColourId,
+            activeTab == 2 ? PiColours::accent.withAlpha (0.25f) : PiColours::buttonBg);
+        modulationTabButton.setColour (juce::TextButton::textColourOffId,
+            activeTab == 2 ? PiColours::accentBright : PiColours::textNormal);
+        settingsButton.setColour (juce::TextButton::buttonColourId, PiColours::buttonBg);
+        settingsButton.setColour (juce::TextButton::textColourOffId, PiColours::textNormal);
+        resourcesButton.setColour (juce::TextButton::buttonColourId, PiColours::buttonBg);
+        resourcesButton.setColour (juce::TextButton::textColourOffId, PiColours::textNormal);
+    };
+
+    droneTabButton.onClick = [this, piUpdateTabColors] {
+        if (activeTab == 0)
+        {
+            // Already on drone tab — toggle page
+            piDroneKnobPage = (piDroneKnobPage + 1) % 2;
+            updateDroneParameterKnobs();
+            return;
+        }
+        activeTab = 0;
+        piDroneKnobPage = 0;
+        piLoopMode = false;
+        selectedEffectSlot = -1;
+        TouchLoopButton::selectedSlot = -1;
+        piUpdateTabColors();
+        updateEffectButtonColors();
+        updateDroneParameterKnobs();
+        if (modulationPanel)
+            modulationPanel->setVisible (false);
+        piLoopDetail->setVisible (true);
+        for (auto& btn : piLoopButtons)
+            if (btn) btn->repaint();
+    };
+
+    modulationTabButton.onClick = [this, piUpdateTabColors] {
+        activeTab = 2;
+        piLoopMode = false;
+        selectedEffectSlot = -1;
+        TouchLoopButton::selectedSlot = -1;
+        piUpdateTabColors();
+        updateEffectButtonColors();
+        // Show modulation panel in the detail strip area
+        piLoopDetail->setVisible (false);
+        if (modulationPanel)
+        {
+            modulationPanel->setVisible (true);
+            modulationPanel->setBounds (piLoopDetail->getBounds());
+        }
+        // Clear bottom knobs (mod panel has its own controls)
+        for (int i = 0; i < maxParamKnobs; ++i)
+        {
+            paramKnobs[i].setVisible (false);
+            paramLabels[i].setVisible (false);
+        }
+        numActiveKnobs = 0;
+        for (auto& btn : piLoopButtons)
+            if (btn) btn->repaint();
+    };
+
+    piUpdateTabColors();
+
+    // Effect buttons: tap selects effect and enters effect mode
     for (int i = 0; i < 6; ++i)
     {
         effectButtons[i].onClick = [this, i]() {
-            selectedEffectSlot = i;
-            updateEffectButtonColors();
-            updateEffectParameterKnobs();
+            piSelectEffect (i);
         };
     }
 
-    // Select loop 0 by default
+    // Set Pi-specific button styling
+    bypassButton.setButtonText (masterBypass.load() ? "OFF" : "ON");
+    bypassButton.setColour (juce::TextButton::buttonColourId,
+                             masterBypass.load() ? PiColours::recording.withAlpha (0.3f) : PiColours::buttonBg);
+    bypassButton.setColour (juce::TextButton::textColourOffId,
+                             masterBypass.load() ? PiColours::recording : PiColours::textNormal);
+    midiLearnButton.setColour (juce::TextButton::buttonColourId, PiColours::buttonBg);
+    midiLearnButton.setColour (juce::TextButton::textColourOffId, PiColours::textDim);
+
+    // Start in loop mode with loop 0 selected
+    piLoopMode = true;
     piSelectLoop (0);
 }
 
 void MainComponent::piSelectLoop (int slot)
 {
+    // Enter loop mode — deselect effects, return to loops view
+    activeTab = 1;
+    piLoopMode = true;
+    selectedEffectSlot = -1;
+    updateEffectButtonColors();
+
+    // Restore loop detail strip (may have been replaced by mod panel)
+    piLoopDetail->setVisible (true);
+    if (modulationPanel)
+        modulationPanel->setVisible (false);
+
+    // Unhighlight drone/mod tab buttons
+    droneTabButton.setColour (juce::TextButton::buttonColourId, PiColours::buttonBg);
+    droneTabButton.setColour (juce::TextButton::textColourOffId, PiColours::textNormal);
+    modulationTabButton.setColour (juce::TextButton::buttonColourId, PiColours::buttonBg);
+    modulationTabButton.setColour (juce::TextButton::textColourOffId, PiColours::textNormal);
+
     TouchLoopButton::selectedSlot = slot;
     piLoopDetail->setSelectedLoop (slot);
     piSyncDetailToLoop (slot);
+    updateLoopParameterKnobs();
 
-    // Repaint all loop buttons to update selection highlight
+    for (auto& btn : piLoopButtons)
+        if (btn) btn->repaint();
+}
+
+void MainComponent::piSelectEffect (int slot)
+{
+    // Enter effect mode — deselect loops, return to loops view
+    activeTab = 1;
+    piLoopMode = false;
+    TouchLoopButton::selectedSlot = -1;
+    selectedEffectSlot = slot;
+
+    // Restore loop detail strip
+    piLoopDetail->setVisible (true);
+    if (modulationPanel)
+        modulationPanel->setVisible (false);
+
+    droneTabButton.setColour (juce::TextButton::buttonColourId, PiColours::buttonBg);
+    droneTabButton.setColour (juce::TextButton::textColourOffId, PiColours::textNormal);
+    modulationTabButton.setColour (juce::TextButton::buttonColourId, PiColours::buttonBg);
+    modulationTabButton.setColour (juce::TextButton::textColourOffId, PiColours::textNormal);
+
+    updateEffectButtonColors();
+    updateEffectParameterKnobs();
+
     for (auto& btn : piLoopButtons)
         if (btn) btn->repaint();
 }
@@ -2048,13 +2201,194 @@ void MainComponent::piToggleLoop (int slot)
     piSelectLoop (slot);
 }
 
+void MainComponent::updateDroneParameterKnobs()
+{
+    // Hide all existing param controls
+    for (int i = 0; i < maxParamKnobs; ++i)
+    {
+        paramKnobs[i].setVisible (false);
+        paramKnobs[i].onValueChange = nullptr;
+        paramLabels[i].setVisible (false);
+    }
+    for (int i = 0; i < 4; ++i)
+    {
+        paramCombos[i].setVisible (false);
+        paramCombos[i].onChange = nullptr;
+        paramComboLabels[i].setVisible (false);
+        paramToggles[i].setVisible (false);
+        paramToggles[i].onClick = nullptr;
+    }
+    numActiveKnobs = 0;
+    numActiveCombos = 0;
+    numActiveToggles = 0;
+
+    auto addKnob = [this](const juce::String& name, juce::Slider& source) {
+        if (numActiveKnobs >= maxParamKnobs) return;
+        auto& knob = paramKnobs[numActiveKnobs];
+        auto& label = paramLabels[numActiveKnobs];
+
+        knob.setRange (source.getRange().getStart(), source.getRange().getEnd(), source.getInterval());
+        knob.setValue (source.getValue(), juce::dontSendNotification);
+        knob.setTextValueSuffix (source.getTextValueSuffix());
+        knob.onValueChange = [&knob, &source] {
+            source.setValue (knob.getValue(), juce::sendNotificationSync);
+        };
+        knob.setVisible (true);
+
+        label.setText (name, juce::dontSendNotification);
+        label.setVisible (true);
+        numActiveKnobs++;
+    };
+
+    auto addToggleAsKnob = [this](const juce::String& name, juce::ToggleButton& source) {
+        if (numActiveKnobs >= maxParamKnobs) return;
+        auto& knob = paramKnobs[numActiveKnobs];
+        auto& label = paramLabels[numActiveKnobs];
+
+        knob.setRange (0, 1, 1);
+        knob.setValue (source.getToggleState() ? 1.0 : 0.0, juce::dontSendNotification);
+        knob.setTextValueSuffix ("");
+        knob.onValueChange = [&knob, &source] {
+            source.setToggleState (knob.getValue() >= 0.5, juce::sendNotificationSync);
+        };
+        knob.setVisible (true);
+
+        label.setText (name, juce::dontSendNotification);
+        label.setVisible (true);
+        numActiveKnobs++;
+    };
+
+    if (piDroneKnobPage == 0)
+    {
+        addKnob ("Dry/Wet", dryWetKnob);
+        addKnob ("Smooth", smoothingKnob);
+        addKnob ("Thresh", thresholdKnob);
+        addKnob ("Tilt", tiltKnob);
+        addKnob ("Delay", delayKnob);
+        addKnob ("Decay", decayKnob);
+        addKnob ("History", historyKnob);
+        addKnob ("Width", stereoWidthKnob);
+    }
+    else
+    {
+        addKnob ("Pitch", pitchKnob);
+        addKnob ("Octave", octaveKnob);
+        addToggleAsKnob ("Peak", peakToggle);
+        addToggleAsKnob ("Phase", phaseToggle);
+        addKnob ("Live/Loop", loopMixKnob);
+        addKnob ("Volume", masterVolumeKnob);
+    }
+
+    resized();
+}
+
 void MainComponent::piSyncDetailToLoop (int slot)
 {
-    // Sync the detail strip controls to this loop's current values
     piLoopDetail->octaveSelector.setSelectedOctave (loopPitchCombos[slot].getSelectedId() - 3);
-    piLoopDetail->hpSlider.setValue (loopHPSliders[slot].getValue(), juce::dontSendNotification);
-    piLoopDetail->lpSlider.setValue (loopLPSliders[slot].getValue(), juce::dontSendNotification);
-    piLoopDetail->volSlider.setValue (loopVolumeSliders[slot].getValue(), juce::dontSendNotification);
+}
+
+void MainComponent::updateLoopParameterKnobs()
+{
+    // Hide all existing param controls
+    for (int i = 0; i < maxParamKnobs; ++i)
+    {
+        paramKnobs[i].setVisible (false);
+        paramKnobs[i].onValueChange = nullptr;
+        paramLabels[i].setVisible (false);
+    }
+    for (int i = 0; i < 4; ++i)
+    {
+        paramCombos[i].setVisible (false);
+        paramCombos[i].onChange = nullptr;
+        paramCombos[i].clear();
+        paramComboLabels[i].setVisible (false);
+        paramToggles[i].setVisible (false);
+        paramToggles[i].onClick = nullptr;
+    }
+    numActiveKnobs = 0;
+    numActiveCombos = 0;
+    numActiveToggles = 0;
+
+    int slot = TouchLoopButton::selectedSlot;
+    if (slot < 0 || slot >= 8) return;
+
+    auto addKnob = [this](const juce::String& name, double min, double max, double step,
+                          double value, std::function<void(float)> onChange, const juce::String& suffix = "") {
+        if (numActiveKnobs >= maxParamKnobs) return;
+        auto& knob = paramKnobs[numActiveKnobs];
+        auto& label = paramLabels[numActiveKnobs];
+
+        knob.setRange (min, max, step);
+        knob.setValue (value, juce::dontSendNotification);
+        knob.setTextValueSuffix (suffix);
+        knob.onValueChange = [&knob, onChange] { onChange ((float) knob.getValue()); };
+        knob.setVisible (true);
+
+        label.setText (name, juce::dontSendNotification);
+        label.setVisible (true);
+
+        numActiveKnobs++;
+    };
+
+    // Knob 1: Loop selector (1-8)
+    addKnob ("Loop", 1, 8, 1, slot + 1,
+             [this](float v) {
+                 int newSlot = juce::jlimit (0, 7, (int) v - 1);
+                 if (newSlot != TouchLoopButton::selectedSlot)
+                     piSelectLoop (newSlot);
+             });
+
+    // Knob 2: Trim start
+    addKnob ("Start", 0, 1, 0.001, loopRecorder.getSlotTrimStart (slot),
+             [this](float v) {
+                 int s = TouchLoopButton::selectedSlot;
+                 if (s >= 0) loopRecorder.setSlotTrimStart (s, v);
+             });
+
+    // Knob 3: Trim end
+    addKnob ("End", 0, 1, 0.001, loopRecorder.getSlotTrimEnd (slot),
+             [this](float v) {
+                 int s = TouchLoopButton::selectedSlot;
+                 if (s >= 0) loopRecorder.setSlotTrimEnd (s, v);
+             });
+
+    // Knob 4: (reserved — placeholder)
+    addKnob ("—", 0, 1, 0.01, 0, [](float) {});
+
+    // Knob 5: (reserved — placeholder)
+    addKnob ("—", 0, 1, 0.01, 0, [](float) {});
+
+    // Knob 6: High pass
+    addKnob ("HP", 20, 5000, 1, loopHPSliders[slot].getValue(),
+             [this](float v) {
+                 int s = TouchLoopButton::selectedSlot;
+                 if (s >= 0) {
+                     loopRecorder.setSlotHighPass (s, v);
+                     loopHPSliders[s].setValue (v, juce::dontSendNotification);
+                 }
+             }, " Hz");
+
+    // Knob 7: Low pass
+    addKnob ("LP", 200, 20000, 1, loopLPSliders[slot].getValue(),
+             [this](float v) {
+                 int s = TouchLoopButton::selectedSlot;
+                 if (s >= 0) {
+                     loopRecorder.setSlotLowPass (s, v);
+                     loopLPSliders[s].setValue (v, juce::dontSendNotification);
+                 }
+             }, " Hz");
+
+    // Knob 8: Volume
+    addKnob ("Vol", 0, 2, 0.01, loopVolumeSliders[slot].getValue(),
+             [this](float v) {
+                 int s = TouchLoopButton::selectedSlot;
+                 if (s >= 0) {
+                     loopRecorder.setSlotVolume (s, v);
+                     loopVolumeSliders[s].setValue (v, juce::dontSendNotification);
+                 }
+             });
+
+    resized();
 }
 
 void MainComponent::paintPi (juce::Graphics& g)
@@ -2097,7 +2431,7 @@ void MainComponent::paintPi (juce::Graphics& g)
             }
 
             g.setColour (PiColours::textDim);
-            g.setFont (juce::Font (9.0f, juce::Font::bold));
+            g.setFont (PiColours::make (9.0f, true));
             g.drawText (label, meterX, meterY - 1, 20, meterH + 2, juce::Justification::centredLeft);
 
             meterY += meterH + 4;
@@ -2118,37 +2452,40 @@ void MainComponent::paintPi (juce::Graphics& g)
 
 void MainComponent::resizedPi()
 {
-    // Fixed layout heights — total must fit in 600px
+    // Fixed layout heights — total = 600px
     const int headerH    = 34;
-    const int loopBtnH   = 80;
-    const int detailH    = 78;
-    const int effectsH   = 44;
-    const int paramH     = 110;  // fixed, not "remaining space"
+    const int loopBtnH   = 78;
+    const int effectsH   = 40;
+    const int paramH     = 110;
     const int gap        = 3;
-    // Total: 34 + 80 + 78 + 44 + 110 + 5*3 = 361 pixels used of 600
-    // Remaining 239px distributed as extra padding
+    // Detail strip fills the space between loop buttons and effects row
 
     auto bounds = getLocalBounds();
 
     // === Header ===
     auto header = bounds.removeFromTop (headerH);
-    header.removeFromLeft (120);  // Space for meters
+    header.removeFromLeft (120);  // Space for meters drawn in paintPi
 
-    droneTabButton.setVisible (true);
-    droneTabButton.setBounds (header.removeFromLeft (55).reduced (2, 5));
-    header.removeFromLeft (2);
-    modulationTabButton.setVisible (true);
-    modulationTabButton.setBounds (header.removeFromLeft (45).reduced (2, 5));
+    // Right corner: small bypass + MIDI learn
+    auto cornerRight = header.removeFromRight (90);
+    midiLearnButton.setVisible (true);
+    midiLearnButton.setButtonText ("M");
+    midiLearnButton.setBounds (cornerRight.removeFromRight (32).reduced (2, 5));
+    cornerRight.removeFromRight (2);
+    bypassButton.setVisible (true);
+    bypassButton.setBounds (cornerRight.reduced (2, 5));
+
+    header.removeFromRight (6);
+
+    // Main header buttons: Drone, Mod, Settings, Resources — evenly spaced
     loopsTabButton.setVisible (false);
-
-    auto headerRight = header;
-    settingsButton.setBounds (headerRight.removeFromRight (60).reduced (2, 5));
-    headerRight.removeFromRight (2);
-    resourcesButton.setBounds (headerRight.removeFromRight (65).reduced (2, 5));
-    headerRight.removeFromRight (2);
-    midiLearnButton.setBounds (headerRight.removeFromRight (72).reduced (2, 5));
-    headerRight.removeFromRight (4);
-    bypassButton.setBounds (headerRight.removeFromRight (55).reduced (2, 5));
+    int mainBtnW = header.getWidth() / 4;
+    droneTabButton.setVisible (true);
+    droneTabButton.setBounds (header.removeFromLeft (mainBtnW).reduced (3, 5));
+    modulationTabButton.setVisible (true);
+    modulationTabButton.setBounds (header.removeFromLeft (mainBtnW).reduced (3, 5));
+    settingsButton.setBounds (header.removeFromLeft (mainBtnW).reduced (3, 5));
+    resourcesButton.setBounds (header.reduced (3, 5));
 
     masterVolumeKnob.setVisible (false);
     masterVolumeLabel.setVisible (false);
@@ -2165,19 +2502,9 @@ void MainComponent::resizedPi()
 
     bounds.removeFromTop (gap);
 
-    // === Loop detail strip ===
-    auto detailArea = bounds.removeFromTop (detailH).reduced (4, 0);
-    piLoopDetail->setBounds (detailArea);
-
-    bounds.removeFromTop (gap);
-
-    // === Effects + params from the BOTTOM up (anchored to bottom edge) ===
+    // === Effects + params anchored to bottom ===
     auto bottomBounds = getLocalBounds();
-
-    // Params area: fixed height, anchored to bottom
     auto paramArea = bottomBounds.removeFromBottom (paramH).reduced (10, 4);
-
-    // Effects row: just above params
     bottomBounds.removeFromBottom (gap);
     auto effectsArea = bottomBounds.removeFromBottom (effectsH).reduced (10, 3);
 
@@ -2191,7 +2518,13 @@ void MainComponent::resizedPi()
         effectButtons[i].setBounds (effectsArea.removeFromLeft (effectWidth).reduced (3, 1));
     }
 
-    // === Parameter knobs: fixed height ===
+    // === Detail strip fills the space between loop buttons and effects row ===
+    int detailTop = bounds.getY();
+    int detailBottom = effectsArea.getY() - gap;
+    auto detailArea = juce::Rectangle<int> (4, detailTop, getWidth() - 8, detailBottom - detailTop);
+    piLoopDetail->setBounds (detailArea);
+
+    // === Parameter knobs: 8 slots, all rotary ===
     const int numSlots = 8;
     const int slotWidth = paramArea.getWidth() / numSlots;
     const int knobSize = juce::jmin (slotWidth - 8, paramArea.getHeight() - 18);
@@ -2208,12 +2541,16 @@ void MainComponent::resizedPi()
         }
     }
 
-    for (int i = 0; i < numActiveCombos && (numActiveKnobs + i) < numSlots; ++i)
+    // Combos only visible on desktop layout
+    if (!usePiLayout)
     {
-        int slot = numActiveKnobs + i;
-        int slotX = paramArea.getX() + slot * slotWidth + (slotWidth - 80) / 2;
-        paramComboLabels[i].setBounds (slotX, paramArea.getY(), 80, labelHeight);
-        paramCombos[i].setBounds (slotX, paramArea.getY() + labelHeight + 8, 80, 26);
+        for (int i = 0; i < numActiveCombos && (numActiveKnobs + i) < numSlots; ++i)
+        {
+            int slot = numActiveKnobs + i;
+            int slotX = paramArea.getX() + slot * slotWidth + (slotWidth - 80) / 2;
+            paramComboLabels[i].setBounds (slotX, paramArea.getY(), 80, labelHeight);
+            paramCombos[i].setBounds (slotX, paramArea.getY() + labelHeight + 8, 80, 26);
+        }
     }
 
     for (int i = 0; i < numActiveToggles && (numActiveKnobs + numActiveCombos + i) < numSlots; ++i)
