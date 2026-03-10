@@ -656,7 +656,14 @@ private:
     void piSelectEffect (int slot);
     void updateLoopParameterKnobs();     // populate knobs 1-8 for loop mode
     void updateDroneParameterKnobs();    // populate knobs for drone tab
+    void updateModulationParameterKnobs(); // populate knobs for modulation tab
     int piDroneKnobPage = 0;            // 0 = first 8 params, 1 = remaining
+
+    // Modulation encoder state
+    int piModSourceIndex = 0;           // 0-6: LFO1-4, EnvFollow, Rand1-2
+    int piModTargetSlot = 0;            // 0-2: which of the 3 target slots
+    int piModParentIndex = 0;           // 0=None, 1-8=Loop1-8, 9-14=effects, 15=Master
+    int piModChildIndex = 0;            // child param within parent
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };

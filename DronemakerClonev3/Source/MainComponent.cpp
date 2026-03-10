@@ -2128,20 +2128,12 @@ void MainComponent::initPiLayout()
         TouchLoopButton::selectedSlot = -1;
         piUpdateTabColors();
         updateEffectButtonColors();
-        // Show modulation panel in the detail strip area
+        // Hide detail strip and desktop modulation panel in Pi mode
         piLoopDetail->setVisible (false);
         if (modulationPanel)
-        {
-            modulationPanel->setVisible (true);
-            modulationPanel->setBounds (piLoopDetail->getBounds());
-        }
-        // Clear bottom knobs (mod panel has its own controls)
-        for (int i = 0; i < maxParamKnobs; ++i)
-        {
-            paramKnobs[i].setVisible (false);
-            paramLabels[i].setVisible (false);
-        }
-        numActiveKnobs = 0;
+            modulationPanel->setVisible (false);
+        // Populate bottom knobs with modulation encoder controls
+        updateModulationParameterKnobs();
         for (auto& btn : piLoopButtons)
             if (btn) btn->repaint();
     };
@@ -2478,6 +2470,457 @@ void MainComponent::updateLoopParameterKnobs()
                      loopVolumeSliders[s].setValue (v, juce::dontSendNotification);
                  }
              });
+
+    resized();
+}
+
+// ======================================================================
+// Modulation target parent/child lookup tables
+// ======================================================================
+namespace ModTargetLookup
+{
+    // Parent categories for encoder 5
+    struct ParentInfo { juce::String name; };
+    static const ParentInfo parents[] = {
+        { "None" },        // 0
+        { "Loop 1" },      // 1
+        { "Loop 2" },      // 2
+        { "Loop 3" },      // 3
+        { "Loop 4" },      // 4
+        { "Loop 5" },      // 5
+        { "Loop 6" },      // 6
+        { "Loop 7" },      // 7
+        { "Loop 8" },      // 8
+        { "Delay" },       // 9
+        { "Distort" },     // 10
+        { "Tape" },        // 11
+        { "Filter" },      // 12
+        { "Tremolo" },     // 13
+        { "Master" },      // 14
+    };
+    static constexpr int numParents = 15;
+
+    struct ChildInfo { juce::String name; ModulationTarget::Type type; };
+
+    // Children for each parent
+    static const ChildInfo loopChildren[] = {
+        { "Volume", ModulationTarget::Type::LoopVolume },
+        { "HP",     ModulationTarget::Type::LoopFilterHP },
+        { "LP",     ModulationTarget::Type::LoopFilterLP },
+    };
+    static const ChildInfo delayChildren[] = {
+        { "Time",     ModulationTarget::Type::DelayTime },
+        { "Feedback", ModulationTarget::Type::DelayFeedback },
+        { "Dry/Wet",  ModulationTarget::Type::DelayDryWet },
+    };
+    static const ChildInfo distChildren[] = {
+        { "Drive",   ModulationTarget::Type::DistortionDrive },
+        { "Tone",    ModulationTarget::Type::DistortionTone },
+        { "Dry/Wet", ModulationTarget::Type::DistortionDryWet },
+    };
+    static const ChildInfo tapeChildren[] = {
+        { "Satur.",  ModulationTarget::Type::TapeSaturation },
+        { "Bias",    ModulationTarget::Type::TapeBias },
+        { "Wow",     ModulationTarget::Type::TapeWowDepth },
+        { "Flutter", ModulationTarget::Type::TapeFlutterDepth },
+        { "Dry/Wet", ModulationTarget::Type::TapeDryWet },
+    };
+    static const ChildInfo filterChildren[] = {
+        { "HP",       ModulationTarget::Type::FilterHP },
+        { "LP",       ModulationTarget::Type::FilterLP },
+        { "Harmonic", ModulationTarget::Type::FilterHarmonicIntensity },
+    };
+    static const ChildInfo tremoloChildren[] = {
+        { "Rate",  ModulationTarget::Type::TremoloRate },
+        { "Depth", ModulationTarget::Type::TremoloDepth },
+    };
+    static const ChildInfo masterChildren[] = {
+        { "Volume",   ModulationTarget::Type::MasterVolume },
+        { "Loop Mix", ModulationTarget::Type::LoopMix },
+    };
+
+    static void getChildren (int parentIndex, const ChildInfo*& out, int& count)
+    {
+        if (parentIndex >= 1 && parentIndex <= 8)
+        { out = loopChildren; count = 3; }
+        else if (parentIndex == 9)
+        { out = delayChildren; count = 3; }
+        else if (parentIndex == 10)
+        { out = distChildren; count = 3; }
+        else if (parentIndex == 11)
+        { out = tapeChildren; count = 5; }
+        else if (parentIndex == 12)
+        { out = filterChildren; count = 3; }
+        else if (parentIndex == 13)
+        { out = tremoloChildren; count = 2; }
+        else if (parentIndex == 14)
+        { out = masterChildren; count = 2; }
+        else
+        { out = nullptr; count = 0; }
+    }
+
+    // Reverse-lookup: given a ModulationTarget, find the parent and child indices
+    static void findIndices (const ModulationTarget& t, int& parentOut, int& childOut)
+    {
+        parentOut = 0;
+        childOut = 0;
+        if (t.type == ModulationTarget::Type::None)
+            return;
+
+        // Check loop types
+        if (t.type == ModulationTarget::Type::LoopVolume ||
+            t.type == ModulationTarget::Type::LoopFilterHP ||
+            t.type == ModulationTarget::Type::LoopFilterLP)
+        {
+            parentOut = juce::jlimit (1, 8, t.index + 1);
+            for (int i = 0; i < 3; ++i)
+                if (loopChildren[i].type == t.type) { childOut = i; break; }
+            return;
+        }
+
+        // Check each effect group
+        struct Group { int parent; const ChildInfo* children; int count; };
+        const Group groups[] = {
+            { 9,  delayChildren,   3 },
+            { 10, distChildren,    3 },
+            { 11, tapeChildren,    5 },
+            { 12, filterChildren,  3 },
+            { 13, tremoloChildren, 2 },
+            { 14, masterChildren,  2 },
+        };
+        for (auto& g : groups)
+        {
+            for (int i = 0; i < g.count; ++i)
+            {
+                if (g.children[i].type == t.type)
+                {
+                    parentOut = g.parent;
+                    childOut = i;
+                    return;
+                }
+            }
+        }
+    }
+}
+
+void MainComponent::updateModulationParameterKnobs()
+{
+    // Hide all existing param controls
+    for (int i = 0; i < maxParamKnobs; ++i)
+    {
+        paramKnobs[i].setVisible (false);
+        paramKnobs[i].onValueChange = nullptr;
+        paramLabels[i].setVisible (false);
+    }
+    for (int i = 0; i < 4; ++i)
+    {
+        paramCombos[i].setVisible (false);
+        paramCombos[i].onChange = nullptr;
+        paramCombos[i].clear();
+        paramComboLabels[i].setVisible (false);
+        paramToggles[i].setVisible (false);
+        paramToggles[i].onClick = nullptr;
+    }
+    numActiveKnobs = 0;
+    numActiveCombos = 0;
+    numActiveToggles = 0;
+    encoderBank.clearAll();
+
+    // Clamp state
+    piModSourceIndex = juce::jlimit (0, modulationManager.getNumSources() - 1, piModSourceIndex);
+    piModTargetSlot  = juce::jlimit (0, 2, piModTargetSlot);
+
+    auto* source = modulationManager.getSource (piModSourceIndex);
+    if (source == nullptr) return;
+
+    // Sync piModParentIndex / piModChildIndex from current target
+    auto& target = source->getTarget (piModTargetSlot);
+    ModTargetLookup::findIndices (target, piModParentIndex, piModChildIndex);
+
+    // Get children for current parent
+    const ModTargetLookup::ChildInfo* children = nullptr;
+    int numChildren = 0;
+    ModTargetLookup::getChildren (piModParentIndex, children, numChildren);
+    piModChildIndex = (numChildren > 0) ? juce::jlimit (0, numChildren - 1, piModChildIndex) : 0;
+
+    // Helper: determine source type
+    auto* lfo   = dynamic_cast<LFOSource*> (source);
+    auto* env   = dynamic_cast<EnvelopeFollowerSource*> (source);
+    auto* rnd   = dynamic_cast<RandomizerSource*> (source);
+
+    auto addKnob = [this](const juce::String& name, double min, double max, double step,
+                          double value, std::function<void(float)> onChange, const juce::String& suffix = "") {
+        if (numActiveKnobs >= maxParamKnobs) return;
+        int knobIndex = numActiveKnobs;
+        auto& knob = paramKnobs[knobIndex];
+        auto& label = paramLabels[knobIndex];
+
+        knob.setRange (min, max, step);
+        knob.setValue (value, juce::dontSendNotification);
+        knob.setTextValueSuffix (suffix);
+        knob.onValueChange = [&knob, onChange] { onChange ((float) knob.getValue()); };
+        knob.setVisible (true);
+
+        label.setText (name, juce::dontSendNotification);
+        label.setVisible (true);
+
+        if (knobIndex < VirtualEncoderBank::numEncoders)
+        {
+            encoderBank.bindEncoder (knobIndex, name, min, max, step,
+                [this, knobIndex, onChange](float v) {
+                    paramKnobs[knobIndex].setValue (v, juce::dontSendNotification);
+                    onChange (v);
+                },
+                [this, knobIndex]() -> float {
+                    return (float) paramKnobs[knobIndex].getValue();
+                },
+                suffix);
+        }
+
+        numActiveKnobs++;
+    };
+
+    // --- Source name labels for encoder 1 ---
+    juce::StringArray sourceNames;
+    for (int i = 0; i < modulationManager.getNumSources(); ++i)
+    {
+        auto* s = modulationManager.getSource (i);
+        if (i < ModulationManager::numLFOs)
+            sourceNames.add ("LFO " + juce::String (i + 1));
+        else if (i == ModulationManager::numLFOs)
+            sourceNames.add ("Env Flw");
+        else
+            sourceNames.add ("Rand " + juce::String (i - ModulationManager::numLFOs));
+    }
+
+    // ===== ENCODER 1: Modulator selector =====
+    addKnob (sourceNames[piModSourceIndex], 0, modulationManager.getNumSources() - 1, 1,
+             piModSourceIndex,
+             [this](float v) {
+                 int newIdx = juce::jlimit (0, modulationManager.getNumSources() - 1, (int) v);
+                 if (newIdx != piModSourceIndex)
+                 {
+                     piModSourceIndex = newIdx;
+                     updateModulationParameterKnobs();
+                 }
+             });
+
+    // ===== ENCODER 2: Param 1 (Rate / Attack) =====
+    if (lfo)
+    {
+        addKnob ("Rate", 0.002, 10, 0.001, lfo->getRate(),
+                 [this](float v) {
+                     auto* l = dynamic_cast<LFOSource*> (modulationManager.getSource (piModSourceIndex));
+                     if (l) l->setRate (v);
+                 }, " Hz");
+    }
+    else if (env)
+    {
+        addKnob ("Attack", 0.1, 500, 0.1, env->getAttackMs(),
+                 [this](float v) {
+                     modulationManager.getEnvelopeFollower().setAttackMs (v);
+                 }, " ms");
+    }
+    else if (rnd)
+    {
+        addKnob ("Rate", 0.002, 10, 0.001, rnd->getRate(),
+                 [this](float v) {
+                     int ri = piModSourceIndex - ModulationManager::numLFOs - ModulationManager::numEnvelopes;
+                     if (ri >= 0 && ri < ModulationManager::numRandomizers)
+                         modulationManager.getRandomizer (ri).setRate (v);
+                 }, " Hz");
+    }
+
+    // ===== ENCODER 3: Param 2 (Waveform / Release / Smoothness) =====
+    if (lfo)
+    {
+        addKnob ("Shape", 0, 5, 1, (int) lfo->getWaveform(),
+                 [this](float v) {
+                     auto* l = dynamic_cast<LFOSource*> (modulationManager.getSource (piModSourceIndex));
+                     if (l) l->setWaveform (static_cast<LFOSource::Waveform> (juce::jlimit (0, 5, (int) v)));
+                 });
+    }
+    else if (env)
+    {
+        addKnob ("Release", 1, 2000, 1, env->getReleaseMs(),
+                 [this](float v) {
+                     modulationManager.getEnvelopeFollower().setReleaseMs (v);
+                 }, " ms");
+    }
+    else if (rnd)
+    {
+        addKnob ("Smooth", 0, 1, 0.01, rnd->getSmoothness(),
+                 [this](float v) {
+                     int ri = piModSourceIndex - ModulationManager::numLFOs - ModulationManager::numEnvelopes;
+                     if (ri >= 0 && ri < ModulationManager::numRandomizers)
+                         modulationManager.getRandomizer (ri).setSmoothness (v);
+                 });
+    }
+
+    // ===== ENCODER 4: Target slot selector (1/2/3) =====
+    addKnob ("Slot", 1, 3, 1, piModTargetSlot + 1,
+             [this](float v) {
+                 int newSlot = juce::jlimit (0, 2, (int) v - 1);
+                 if (newSlot != piModTargetSlot)
+                 {
+                     piModTargetSlot = newSlot;
+                     updateModulationParameterKnobs();
+                 }
+             });
+
+    // ===== ENCODER 5: Target parent =====
+    addKnob (ModTargetLookup::parents[piModParentIndex].name,
+             0, ModTargetLookup::numParents - 1, 1, piModParentIndex,
+             [this](float v) {
+                 int newParent = juce::jlimit (0, ModTargetLookup::numParents - 1, (int) v);
+                 if (newParent != piModParentIndex)
+                 {
+                     piModParentIndex = newParent;
+                     piModChildIndex = 0;
+                     // Apply target change
+                     auto* src = modulationManager.getSource (piModSourceIndex);
+                     if (src)
+                     {
+                         if (piModParentIndex == 0)
+                         {
+                             // None
+                             ModulationTarget t;
+                             src->setTarget (piModTargetSlot, t);
+                         }
+                         else
+                         {
+                             const ModTargetLookup::ChildInfo* ch = nullptr;
+                             int nc = 0;
+                             ModTargetLookup::getChildren (piModParentIndex, ch, nc);
+                             if (nc > 0)
+                             {
+                                 ModulationTarget t;
+                                 t.type = ch[0].type;
+                                 t.index = (piModParentIndex >= 1 && piModParentIndex <= 8) ? piModParentIndex - 1 : 0;
+                                 ModulationTarget::getDefaultRange (t.type, t.rangeMin, t.rangeMax);
+                                 src->setTarget (piModTargetSlot, t);
+                             }
+                         }
+                     }
+                     updateModulationParameterKnobs();
+                 }
+             });
+
+    // ===== ENCODER 6: Target child =====
+    if (numChildren > 0)
+    {
+        addKnob (children[piModChildIndex].name,
+                 0, numChildren - 1, 1, piModChildIndex,
+                 [this, children, numChildren](float v) {
+                     int newChild = juce::jlimit (0, numChildren - 1, (int) v);
+                     if (newChild != piModChildIndex)
+                     {
+                         piModChildIndex = newChild;
+                         auto* src = modulationManager.getSource (piModSourceIndex);
+                         if (src)
+                         {
+                             ModulationTarget t;
+                             t.type = children[newChild].type;
+                             t.index = (piModParentIndex >= 1 && piModParentIndex <= 8) ? piModParentIndex - 1 : 0;
+                             ModulationTarget::getDefaultRange (t.type, t.rangeMin, t.rangeMax);
+                             // Preserve existing min/max if the type hasn't changed
+                             auto& existing = src->getTarget (piModTargetSlot);
+                             if (existing.type == t.type && existing.index == t.index)
+                             {
+                                 t.rangeMin = existing.rangeMin;
+                                 t.rangeMax = existing.rangeMax;
+                             }
+                             src->setTarget (piModTargetSlot, t);
+                         }
+                         updateModulationParameterKnobs();
+                     }
+                 });
+    }
+    else
+    {
+        addKnob ("\xe2\x80\x94", 0, 1, 0.01, 0, [](float) {});
+    }
+
+    // ===== ENCODER 7: Min modulation range =====
+    if (target.type != ModulationTarget::Type::None)
+    {
+        float defMin, defMax;
+        ModulationTarget::getDefaultRange (target.type, defMin, defMax);
+        addKnob ("Min", defMin, defMax, (defMax - defMin) / 200.0, target.rangeMin,
+                 [this](float v) {
+                     auto* src = modulationManager.getSource (piModSourceIndex);
+                     if (src) src->getTarget (piModTargetSlot).rangeMin = v;
+                 });
+    }
+    else
+    {
+        addKnob ("\xe2\x80\x94", 0, 1, 0.01, 0, [](float) {});
+    }
+
+    // ===== ENCODER 8: Max modulation range =====
+    if (target.type != ModulationTarget::Type::None)
+    {
+        float defMin, defMax;
+        ModulationTarget::getDefaultRange (target.type, defMin, defMax);
+        addKnob ("Max", defMin, defMax, (defMax - defMin) / 200.0, target.rangeMax,
+                 [this](float v) {
+                     auto* src = modulationManager.getSource (piModSourceIndex);
+                     if (src) src->getTarget (piModTargetSlot).rangeMax = v;
+                 });
+    }
+    else
+    {
+        addKnob ("\xe2\x80\x94", 0, 1, 0.01, 0, [](float) {});
+    }
+
+    // Bind push buttons
+    // Push 1: Toggle modulator enabled/disabled
+    encoderBank.bindButton (0, [this] {
+        auto* src = modulationManager.getSource (piModSourceIndex);
+        if (src) src->setEnabled (!src->isEnabled());
+    });
+    // Push 2: (EnvFollow) toggle to sensitivity on encoder 2
+    // For now, no-op for other types — can be extended later
+    // Push 4: Clear current target slot
+    encoderBank.bindButton (3, [this] {
+        auto* src = modulationManager.getSource (piModSourceIndex);
+        if (src)
+        {
+            ModulationTarget t;
+            src->setTarget (piModTargetSlot, t);
+            updateModulationParameterKnobs();
+        }
+    });
+    // Push 7: Reset min to default
+    encoderBank.bindButton (6, [this] {
+        auto* src = modulationManager.getSource (piModSourceIndex);
+        if (src)
+        {
+            auto& t = src->getTarget (piModTargetSlot);
+            if (t.type != ModulationTarget::Type::None)
+            {
+                float defMin, defMax;
+                ModulationTarget::getDefaultRange (t.type, defMin, defMax);
+                t.rangeMin = defMin;
+                updateModulationParameterKnobs();
+            }
+        }
+    });
+    // Push 8: Reset max to default
+    encoderBank.bindButton (7, [this] {
+        auto* src = modulationManager.getSource (piModSourceIndex);
+        if (src)
+        {
+            auto& t = src->getTarget (piModTargetSlot);
+            if (t.type != ModulationTarget::Type::None)
+            {
+                float defMin, defMax;
+                ModulationTarget::getDefaultRange (t.type, defMin, defMax);
+                t.rangeMax = defMax;
+                updateModulationParameterKnobs();
+            }
+        }
+    });
 
     resized();
 }
