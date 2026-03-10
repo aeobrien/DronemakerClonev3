@@ -64,12 +64,16 @@ struct Sequence
 struct LoopSettings
 {
     float maxRecordLengthSeconds = 60.0f;  // Range: 5.0 to 300.0
+    float timeScale = 1.0f;               // Multiplier for automation durations (0.1 to 10.0)
+    int presetIndex = 0;                   // Currently selected preset (0 = Off)
     Sequence postRecordSequence;           // Default: just StartPlayback
 
     // Reset to defaults
     void reset()
     {
         maxRecordLengthSeconds = 60.0f;
+        timeScale = 1.0f;
+        presetIndex = 0;
         postRecordSequence.reset();
     }
 };

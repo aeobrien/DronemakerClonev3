@@ -6,6 +6,7 @@
 #include "Effects/TremoloEffect.h"
 #include "Effects/DistortionEffect.h"
 #include "Effects/TapeEffect.h"
+#include "AutomationPresets.h"
 
 MainComponent::MainComponent()
 {
@@ -2354,6 +2355,26 @@ void MainComponent::piSyncDetailToLoop (int slot)
     piLoopDetail->octaveSelector.setSelectedOctave (loopPitchCombos[slot].getSelectedId() - 3);
 }
 
+// Apply an automation preset with time scaling to a sequence
+static Sequence applyPresetWithTimeScale (int presetIdx, float timeScale)
+{
+    presetIdx = juce::jlimit (0, AutomationPresets::numPresets - 1, presetIdx);
+    Sequence seq = AutomationPresets::presets[presetIdx].build();
+
+    // Scale all durations
+    if (std::abs (timeScale - 1.0f) > 0.001f)
+    {
+        for (auto& cmd : seq.commands)
+        {
+            if (auto* w = std::get_if<Wait> (&cmd))
+                w->durationSeconds *= timeScale;
+            else if (auto* r = std::get_if<RampLevel> (&cmd))
+                r->durationSeconds *= timeScale;
+        }
+    }
+    return seq;
+}
+
 void MainComponent::updateLoopParameterKnobs()
 {
     // Hide all existing param controls
@@ -2435,11 +2456,40 @@ void MainComponent::updateLoopParameterKnobs()
                  if (s >= 0) loopRecorder.setSlotTrimEnd (s, v);
              });
 
-    // Knob 4: (reserved — placeholder)
-    addKnob ("\xe2\x80\x94", 0, 1, 0.01, 0, [](float) {});
+    // Knob 4: Automation preset selector
+    {
+        auto settings = loopRecorder.getSlotSettings (slot);
+        addKnob ("Auto", 0, AutomationPresets::numPresets - 1, 1, settings.presetIndex,
+                 [this](float v) {
+                     int s = TouchLoopButton::selectedSlot;
+                     if (s < 0) return;
+                     int presetIdx = juce::jlimit (0, AutomationPresets::numPresets - 1, (int) v);
+                     auto settings = loopRecorder.getSlotSettings (s);
+                     settings.presetIndex = presetIdx;
+                     settings.postRecordSequence = applyPresetWithTimeScale (presetIdx, settings.timeScale);
+                     loopRecorder.setSlotSettings (s, settings);
+                     // Update knob label to show preset name
+                     paramLabels[3].setText (juce::String (AutomationPresets::presets[presetIdx].name),
+                                             juce::dontSendNotification);
+                 });
+        // Show preset name as label
+        paramLabels[3].setText (juce::String (AutomationPresets::presets[settings.presetIndex].name),
+                                juce::dontSendNotification);
+    }
 
-    // Knob 5: (reserved — placeholder)
-    addKnob ("\xe2\x80\x94", 0, 1, 0.01, 0, [](float) {});
+    // Knob 5: Time scale (0.1x to 10.0x)
+    {
+        auto settings = loopRecorder.getSlotSettings (slot);
+        addKnob ("Time", 0.1, 10.0, 0.1, settings.timeScale,
+                 [this](float v) {
+                     int s = TouchLoopButton::selectedSlot;
+                     if (s < 0) return;
+                     auto settings = loopRecorder.getSlotSettings (s);
+                     settings.timeScale = v;
+                     settings.postRecordSequence = applyPresetWithTimeScale (settings.presetIndex, v);
+                     loopRecorder.setSlotSettings (s, settings);
+                 }, "x");
+    }
 
     // Knob 6: High pass
     addKnob ("HP", 20, 5000, 1, loopHPSliders[slot].getValue(),
@@ -2470,6 +2520,18 @@ void MainComponent::updateLoopParameterKnobs()
                      loopVolumeSliders[s].setValue (v, juce::dontSendNotification);
                  }
              });
+
+    // Push button 4: Preview automation on selected loop
+    encoderBank.bindButton (3, [this] {
+        int s = TouchLoopButton::selectedSlot;
+        if (s < 0) return;
+        if (loopRecorder.isPreviewRunning (s))
+            loopRecorder.stopPreview (s);
+        else
+            loopRecorder.startPreview (s);
+    });
+
+    // Push button 5: (reserved for future use)
 
     resized();
 }

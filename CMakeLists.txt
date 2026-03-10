@@ -42,6 +42,7 @@ target_sources(DronemakerClonev3 PRIVATE
     ${SOURCE_DIR}/LoopRecorder.h
     ${SOURCE_DIR}/LoopRecorder.cpp
     ${SOURCE_DIR}/LoopAutomation.h
+    ${SOURCE_DIR}/AutomationPresets.h
     ${SOURCE_DIR}/LoopSequenceExecutor.h
     ${SOURCE_DIR}/LoopSequenceExecutor.cpp
     ${SOURCE_DIR}/LoopAutomationEditor.h
