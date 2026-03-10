@@ -646,6 +646,7 @@ void MainComponent::updateEffectParameterKnobs()
     numActiveKnobs = 0;
     numActiveCombos = 0;
     numActiveToggles = 0;
+    encoderBank.clearAll();
 
     if (selectedEffectSlot < 0)
         return;
@@ -656,8 +657,9 @@ void MainComponent::updateEffectParameterKnobs()
     auto addKnob = [this](const juce::String& name, double min, double max, double step,
                           double value, std::function<void(float)> onChange, const juce::String& suffix = "") {
         if (numActiveKnobs >= maxParamKnobs) return;
-        auto& knob = paramKnobs[numActiveKnobs];
-        auto& label = paramLabels[numActiveKnobs];
+        int knobIndex = numActiveKnobs;
+        auto& knob = paramKnobs[knobIndex];
+        auto& label = paramLabels[knobIndex];
 
         knob.setRange (min, max, step);
         knob.setValue (value, juce::dontSendNotification);
@@ -667,6 +669,20 @@ void MainComponent::updateEffectParameterKnobs()
 
         label.setText (name, juce::dontSendNotification);
         label.setVisible (true);
+
+        // Bind to virtual encoder bank for MIDI CC control
+        if (knobIndex < VirtualEncoderBank::numEncoders)
+        {
+            encoderBank.bindEncoder (knobIndex, name, min, max, step,
+                [this, knobIndex, onChange](float v) {
+                    paramKnobs[knobIndex].setValue (v, juce::dontSendNotification);
+                    onChange (v);
+                },
+                [this, knobIndex]() -> float {
+                    return (float) paramKnobs[knobIndex].getValue();
+                },
+                suffix);
+        }
 
         numActiveKnobs++;
     };
@@ -1809,12 +1825,13 @@ void MainComponent::handleIncomingMidiMessage (juce::MidiInput* source,
     // Copy the relevant data we need
     const bool isCC = message.isController();
     const bool isNoteOn = message.isNoteOn();
+    const bool isNoteOff = message.isNoteOff();
     const int ccNumber = isCC ? message.getControllerNumber() : 0;
     const int ccValue = isCC ? message.getControllerValue() : 0;
-    const int noteNumber = isNoteOn ? message.getNoteNumber() : 0;
+    const int noteNumber = (isNoteOn || isNoteOff) ? message.getNoteNumber() : 0;
 
     // Post to message thread for processing
-    juce::MessageManager::callAsync ([this, isCC, isNoteOn, ccNumber, ccValue, noteNumber]()
+    juce::MessageManager::callAsync ([this, isCC, isNoteOn, isNoteOff, ccNumber, ccValue, noteNumber]()
     {
         // Handle MIDI learn mode - only if we have a selection
         if (midiLearnActive.load() && midiLearnHasSelection.load())
@@ -1826,8 +1843,29 @@ void MainComponent::handleIncomingMidiMessage (juce::MidiInput* source,
             return;
         }
 
-        // Handle CC messages for mapped knobs
+        // Virtual encoder bank — contextual dispatch (takes priority)
+        bool handledByEncoder = false;
         if (isCC)
+            handledByEncoder = encoderBank.handleCC (ccNumber, ccValue);
+        if (isNoteOn && !handledByEncoder)
+            handledByEncoder = encoderBank.handleNoteOn (noteNumber);
+
+        // Default loop toggle notes: 44-51 (G#2-D#3) → toggle record/play/stop
+        if (isNoteOn && !handledByEncoder)
+        {
+            int loopSlot = noteNumber - VirtualEncoderBank::loopToggleNoteBase;
+            if (loopSlot >= 0 && loopSlot < 8)
+            {
+                if (usePiLayout)
+                    piToggleLoop (loopSlot);
+                else
+                    loopButtons[loopSlot].triggerClick();
+                handledByEncoder = true;
+            }
+        }
+
+        // Handle CC messages for legacy mapped knobs (skip if encoder handled it)
+        if (isCC && !handledByEncoder)
         {
             auto it = midiCCMappings.find (ccNumber);
             if (it != midiCCMappings.end())
@@ -1858,8 +1896,8 @@ void MainComponent::handleIncomingMidiMessage (juce::MidiInput* source,
             }
         }
 
-        // Handle note messages for buttons
-        if (isNoteOn)
+        // Handle note messages — check encoder push buttons first, then legacy
+        if (isNoteOn && !handledByEncoder)
         {
             auto it = midiNoteMappings.find (noteNumber);
             if (it != midiNoteMappings.end())
@@ -1881,6 +1919,10 @@ void MainComponent::handleIncomingMidiMessage (juce::MidiInput* source,
                 }
             }
         }
+
+        // Handle NoteOff for encoder push button release
+        if (isNoteOff)
+            encoderBank.handleNoteOff (noteNumber);
     });
 }
 
@@ -2221,11 +2263,13 @@ void MainComponent::updateDroneParameterKnobs()
     numActiveKnobs = 0;
     numActiveCombos = 0;
     numActiveToggles = 0;
+    encoderBank.clearAll();
 
     auto addKnob = [this](const juce::String& name, juce::Slider& source) {
         if (numActiveKnobs >= maxParamKnobs) return;
-        auto& knob = paramKnobs[numActiveKnobs];
-        auto& label = paramLabels[numActiveKnobs];
+        int knobIndex = numActiveKnobs;
+        auto& knob = paramKnobs[knobIndex];
+        auto& label = paramLabels[knobIndex];
 
         knob.setRange (source.getRange().getStart(), source.getRange().getEnd(), source.getInterval());
         knob.setValue (source.getValue(), juce::dontSendNotification);
@@ -2237,13 +2281,30 @@ void MainComponent::updateDroneParameterKnobs()
 
         label.setText (name, juce::dontSendNotification);
         label.setVisible (true);
+
+        // Bind to virtual encoder bank
+        if (knobIndex < VirtualEncoderBank::numEncoders)
+        {
+            encoderBank.bindEncoder (knobIndex, name,
+                source.getRange().getStart(), source.getRange().getEnd(), source.getInterval(),
+                [this, knobIndex, &source](float v) {
+                    paramKnobs[knobIndex].setValue (v, juce::dontSendNotification);
+                    source.setValue (v, juce::sendNotificationSync);
+                },
+                [this, knobIndex]() -> float {
+                    return (float) paramKnobs[knobIndex].getValue();
+                },
+                source.getTextValueSuffix());
+        }
+
         numActiveKnobs++;
     };
 
     auto addToggleAsKnob = [this](const juce::String& name, juce::ToggleButton& source) {
         if (numActiveKnobs >= maxParamKnobs) return;
-        auto& knob = paramKnobs[numActiveKnobs];
-        auto& label = paramLabels[numActiveKnobs];
+        int knobIndex = numActiveKnobs;
+        auto& knob = paramKnobs[knobIndex];
+        auto& label = paramLabels[knobIndex];
 
         knob.setRange (0, 1, 1);
         knob.setValue (source.getToggleState() ? 1.0 : 0.0, juce::dontSendNotification);
@@ -2255,6 +2316,20 @@ void MainComponent::updateDroneParameterKnobs()
 
         label.setText (name, juce::dontSendNotification);
         label.setVisible (true);
+
+        // Bind to virtual encoder bank
+        if (knobIndex < VirtualEncoderBank::numEncoders)
+        {
+            encoderBank.bindEncoder (knobIndex, name, 0, 1, 1,
+                [this, knobIndex, &source](float v) {
+                    paramKnobs[knobIndex].setValue (v, juce::dontSendNotification);
+                    source.setToggleState (v >= 0.5f, juce::sendNotificationSync);
+                },
+                [this, knobIndex]() -> float {
+                    return (float) paramKnobs[knobIndex].getValue();
+                });
+        }
+
         numActiveKnobs++;
     };
 
@@ -2308,6 +2383,7 @@ void MainComponent::updateLoopParameterKnobs()
     numActiveKnobs = 0;
     numActiveCombos = 0;
     numActiveToggles = 0;
+    encoderBank.clearAll();
 
     int slot = TouchLoopButton::selectedSlot;
     if (slot < 0 || slot >= 8) return;
@@ -2315,8 +2391,9 @@ void MainComponent::updateLoopParameterKnobs()
     auto addKnob = [this](const juce::String& name, double min, double max, double step,
                           double value, std::function<void(float)> onChange, const juce::String& suffix = "") {
         if (numActiveKnobs >= maxParamKnobs) return;
-        auto& knob = paramKnobs[numActiveKnobs];
-        auto& label = paramLabels[numActiveKnobs];
+        int knobIndex = numActiveKnobs;
+        auto& knob = paramKnobs[knobIndex];
+        auto& label = paramLabels[knobIndex];
 
         knob.setRange (min, max, step);
         knob.setValue (value, juce::dontSendNotification);
@@ -2326,6 +2403,20 @@ void MainComponent::updateLoopParameterKnobs()
 
         label.setText (name, juce::dontSendNotification);
         label.setVisible (true);
+
+        // Bind to virtual encoder bank for MIDI CC control
+        if (knobIndex < VirtualEncoderBank::numEncoders)
+        {
+            encoderBank.bindEncoder (knobIndex, name, min, max, step,
+                [this, knobIndex, onChange](float v) {
+                    paramKnobs[knobIndex].setValue (v, juce::dontSendNotification);
+                    onChange (v);
+                },
+                [this, knobIndex]() -> float {
+                    return (float) paramKnobs[knobIndex].getValue();
+                },
+                suffix);
+        }
 
         numActiveKnobs++;
     };
@@ -2353,10 +2444,10 @@ void MainComponent::updateLoopParameterKnobs()
              });
 
     // Knob 4: (reserved — placeholder)
-    addKnob ("—", 0, 1, 0.01, 0, [](float) {});
+    addKnob ("\xe2\x80\x94", 0, 1, 0.01, 0, [](float) {});
 
     // Knob 5: (reserved — placeholder)
-    addKnob ("—", 0, 1, 0.01, 0, [](float) {});
+    addKnob ("\xe2\x80\x94", 0, 1, 0.01, 0, [](float) {});
 
     // Knob 6: High pass
     addKnob ("HP", 20, 5000, 1, loopHPSliders[slot].getValue(),

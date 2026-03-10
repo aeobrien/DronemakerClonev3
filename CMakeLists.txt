@@ -48,6 +48,7 @@ target_sources(DronemakerClonev3 PRIVATE
     ${SOURCE_DIR}/LoopAutomationEditor.cpp
     ${SOURCE_DIR}/PiLayout.h
     ${SOURCE_DIR}/PiLayout.cpp
+    ${SOURCE_DIR}/VirtualEncoderBank.h
 
     # Effects
     ${SOURCE_DIR}/Effects/EffectBase.h

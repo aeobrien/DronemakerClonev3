@@ -409,8 +409,20 @@ Phase 4 is entirely independent and can be done at any time.
 | 42 (F#2) | Push 7 | |
 | 43 (G2) | Push 8 | |
 
-### Loop Buttons (existing MIDI Learn, unchanged)
-Mapped via MIDI Learn as before — typically notes or CCs above the encoder range.
+### Loop Toggle (Record/Play/Stop)
+| Note | Loop | Notes |
+|------|------|-------|
+| 44 (G#2) | Loop 1 | Same as long-press: record → stop → clear cycle |
+| 45 (A2) | Loop 2 | |
+| 46 (A#2) | Loop 3 | |
+| 47 (B2) | Loop 4 | |
+| 48 (C3) | Loop 5 | |
+| 49 (C#3) | Loop 6 | |
+| 50 (D3) | Loop 7 | |
+| 51 (D#3) | Loop 8 | |
+
+### Additional Mappings (via MIDI Learn)
+Other controls can still be mapped via MIDI Learn as before.
 
 ---
 

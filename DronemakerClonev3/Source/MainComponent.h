@@ -9,6 +9,7 @@
 #include "Modulation/ModulationManager.h"
 #include "Modulation/ModulationPanel.h"
 #include "PiLayout.h"
+#include "VirtualEncoderBank.h"
 
 //==============================================================================
 // Minimal, instrument-like look & feel (appearance only)
@@ -635,6 +636,9 @@ private:
     int numActiveKnobs = 0;
     int numActiveCombos = 0;
     int numActiveToggles = 0;
+
+    // ===== VIRTUAL ENCODER BANK =====
+    VirtualEncoderBank encoderBank;
 
     // ===== PI LAYOUT =====
     bool usePiLayout = false;
