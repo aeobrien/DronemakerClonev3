@@ -2499,10 +2499,10 @@ void MainComponent::updateLoopParameterKnobs()
                      int s = TouchLoopButton::selectedSlot;
                      if (s < 0) return;
                      int presetIdx = juce::jlimit (0, AutomationPresets::numPresets - 1, (int) v);
-                     auto settings = loopRecorder.getSlotSettings (s);
-                     settings.presetIndex = presetIdx;
-                     settings.postRecordSequence = applyPresetWithTimeScale (presetIdx, settings.timeScale);
-                     loopRecorder.setSlotSettings (s, settings);
+                     auto slotSettings = loopRecorder.getSlotSettings (s);
+                     slotSettings.presetIndex = presetIdx;
+                     slotSettings.postRecordSequence = applyPresetWithTimeScale (presetIdx, slotSettings.timeScale);
+                     loopRecorder.setSlotSettings (s, slotSettings);
                      // Update knob label to show preset name
                      paramLabels[3].setText (juce::String (AutomationPresets::presets[presetIdx].name),
                                              juce::dontSendNotification);
@@ -2519,10 +2519,10 @@ void MainComponent::updateLoopParameterKnobs()
                  [this](float v) {
                      int s = TouchLoopButton::selectedSlot;
                      if (s < 0) return;
-                     auto settings = loopRecorder.getSlotSettings (s);
-                     settings.timeScale = v;
-                     settings.postRecordSequence = applyPresetWithTimeScale (settings.presetIndex, v);
-                     loopRecorder.setSlotSettings (s, settings);
+                     auto slotSettings = loopRecorder.getSlotSettings (s);
+                     slotSettings.timeScale = v;
+                     slotSettings.postRecordSequence = applyPresetWithTimeScale (slotSettings.presetIndex, v);
+                     loopRecorder.setSlotSettings (s, slotSettings);
                  }, "x");
     }
 
@@ -2781,7 +2781,6 @@ void MainComponent::updateModulationParameterKnobs()
     juce::StringArray sourceNames;
     for (int i = 0; i < modulationManager.getNumSources(); ++i)
     {
-        auto* s = modulationManager.getSource (i);
         if (i < ModulationManager::numLFOs)
             sourceNames.add ("LFO " + juce::String (i + 1));
         else if (i == ModulationManager::numLFOs)
