@@ -11,7 +11,9 @@ public:
 
     void initialise (const juce::String&) override
     {
-        mainWindow.reset (new MainWindow ("DronemakerClone", new MainComponent(), *this));
+        bool kioskMode = getCommandLineParameterArray().contains ("--kiosk");
+
+        mainWindow.reset (new MainWindow ("DronemakerClone", new MainComponent(), *this, kioskMode));
     }
 
     void shutdown() override
@@ -30,18 +32,38 @@ public:
     class MainWindow : public juce::DocumentWindow
     {
     public:
-        MainWindow (juce::String name, juce::Component* c, JUCEApplication& a)
+        MainWindow (juce::String name, juce::Component* c, JUCEApplication& a, bool kiosk)
             : DocumentWindow (name,
                               juce::Desktop::getInstance().getDefaultLookAndFeel()
                                   .findColour (ResizableWindow::backgroundColourId),
-                              DocumentWindow::allButtons),
+                              kiosk ? 0 : DocumentWindow::allButtons),
               app (a)
         {
-            setUsingNativeTitleBar (true);
             setContentOwned (c, true);
-            centreWithSize (getWidth(), getHeight());
-            setResizable (true, true);
-            setVisible (true);
+
+            if (kiosk)
+            {
+                // Kiosk mode: no title bar, fullscreen, no decorations
+                setUsingNativeTitleBar (false);
+                setResizable (false, false);
+                auto displayArea = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay()->userArea;
+                setBounds (displayArea);
+                setVisible (true);
+
+                // Hide mouse cursor (touch-only)
+                setMouseCursor (juce::MouseCursor::NoCursor);
+
+                std::cerr << "Kiosk mode: fullscreen " << displayArea.getWidth()
+                          << "x" << displayArea.getHeight() << std::endl;
+            }
+            else
+            {
+                // Normal windowed mode
+                setUsingNativeTitleBar (true);
+                centreWithSize (getWidth(), getHeight());
+                setResizable (true, true);
+                setVisible (true);
+            }
         }
 
         void closeButtonPressed() override

@@ -19,6 +19,41 @@ MainComponent::MainComponent()
     if (err.isNotEmpty())
         DBG ("AudioDeviceManager init error: " + err);
 
+    // Auto-select USB audio interface if available (for Pi kiosk mode)
+    // Searches for Scarlett, USB, or any non-default device
+    #if JUCE_LINUX
+    {
+        auto* currentType = deviceManager.getCurrentAudioDeviceType();
+        if (currentType != nullptr)
+        {
+            auto deviceNames = currentType->getDeviceNames();
+            juce::String bestDevice;
+            for (const auto& name : deviceNames)
+            {
+                auto lower = name.toLowerCase();
+                if (lower.contains ("scarlett"))
+                {
+                    bestDevice = name;
+                    break;  // Scarlett is the top pick
+                }
+                else if (lower.contains ("usb") && bestDevice.isEmpty())
+                {
+                    bestDevice = name;
+                }
+            }
+            if (bestDevice.isNotEmpty())
+            {
+                juce::AudioDeviceManager::AudioDeviceSetup autoSetup;
+                deviceManager.getAudioDeviceSetup (autoSetup);
+                autoSetup.outputDeviceName = bestDevice;
+                autoSetup.inputDeviceName = bestDevice;
+                deviceManager.setAudioDeviceSetup (autoSetup, true);
+                std::cerr << "Auto-selected audio device: " << bestDevice << std::endl;
+            }
+        }
+    }
+    #endif
+
     // Set default buffer size and ensure input channel is enabled
     juce::AudioDeviceManager::AudioDeviceSetup setup;
     deviceManager.getAudioDeviceSetup (setup);
