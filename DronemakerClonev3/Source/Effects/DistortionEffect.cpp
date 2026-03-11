@@ -110,6 +110,14 @@ void DistortionEffect::processSample (float& left, float& right)
     float bitDepth = bitDepthSmooth.getNextValue();
     float srReduction = srReductionSmooth.getNextValue();
 
+    // Auto gain compensation: reduce output proportionally to drive
+    // Soft/hard clip saturate, so output roughly stays at 1.0 — compensate for input gain
+    // Wavefold is more complex but similar principle
+    if (algorithm != Bitcrush)
+        autoGainFactor = 1.0f / std::sqrt (drive);  // Gentle compensation
+    else
+        autoGainFactor = 1.0f;  // Bitcrush doesn't add gain
+
     float dryL = left;
     float dryR = right;
 

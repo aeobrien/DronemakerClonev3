@@ -79,6 +79,19 @@ public:
     // Check if a slot has level-affecting automation commands (SetLevel or RampLevel)
     bool slotHasLevelAutomation (int slot) const;
 
+    // Automation range modifier (constrains automation output)
+    void setSlotAutomationRange (int slot, float rangeMin, float rangeMax);
+    float getSlotAutomationRangeMin (int slot) const;
+    float getSlotAutomationRangeMax (int slot) const;
+
+    // Per-slot parameter getters (for UI indicators)
+    float getSlotVolume (int slot) const;
+    float getSlotHighPass (int slot) const;
+    float getSlotLowPass (int slot) const;
+    float getSlotVolumeMod (int slot) const;
+    float getSlotHPMod (int slot) const;
+    float getSlotLPMod (int slot) const;
+
     // Get a sample at a specific index from a slot's buffer (for waveform display)
     float getSampleAtIndex (int slot, int index) const;
 
@@ -119,6 +132,8 @@ private:
         LoopSettings settings;              // Per-loop recording settings
         LoopSequenceExecutor executor;      // Runtime automation executor
         float automationLevel = 1.0f;       // Current level from automation (0.0-1.0)
+        float automationRangeMin = 0.0f;    // Min output level for automation range modifier
+        float automationRangeMax = 1.0f;    // Max output level for automation range modifier
         int maxSamplesForSlot = 0;          // Calculated from settings.maxRecordLengthSeconds
     };
 

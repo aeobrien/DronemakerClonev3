@@ -640,11 +640,17 @@ private:
     // ===== VIRTUAL ENCODER BANK =====
     VirtualEncoderBank encoderBank;
 
+    // Dev push buttons (simulate encoder push buttons on-screen)
+    std::array<juce::TextButton, 8> piPushButtons;
+
     // ===== PI LAYOUT =====
     bool usePiLayout = false;
     bool piLoopMode = true;  // true = knobs control loops, false = knobs control effects
     std::array<std::unique_ptr<TouchLoopButton>, 8> piLoopButtons;
     std::unique_ptr<LoopDetailStrip> piLoopDetail;
+    std::unique_ptr<MiniMixerStrip> piMiniMixer;
+    std::unique_ptr<MultiLoopOverview> piMultiOverview;
+    juce::TextButton piIndicatorModeButton { "Ind" };  // unused, kept for layout safety
     int piEffectsRowY = 0;   // computed in resizedPi, used by paintPi
     int piEffectsRowH = 42;
     void initPiLayout();

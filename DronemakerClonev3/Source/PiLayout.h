@@ -50,6 +50,31 @@ namespace PiColours
 }
 
 //==============================================================================
+// Per-loop state snapshot for indicators (populated by MainComponent each tick)
+struct LoopIndicatorData
+{
+    float volume = 1.0f;          // Current effective volume (0-2)
+    float hpFreq = 20.0f;        // Current HP cutoff Hz
+    float lpFreq = 20000.0f;     // Current LP cutoff Hz
+    bool volumeModulated = false; // True if modulation is actively affecting volume
+    bool hpModulated = false;     // True if modulation is actively affecting HP
+    bool lpModulated = false;     // True if modulation is actively affecting LP
+    bool hasAutomation = false;   // True if automation sequence includes level commands
+    float automationLevel = 1.0f; // Current automation level multiplier
+    bool active = false;          // Has content and is playing
+    bool recording = false;       // Currently recording
+};
+
+//==============================================================================
+// Loop indicator display modes
+enum class LoopIndicatorMode
+{
+    ButtonOverlay,    // Mode A: indicators painted onto existing loop buttons
+    MiniMixer,        // Mode B: thin horizontal strip with 8 mini channel meters
+    MultiOverview     // Mode C: 8-column overview replacing the detail strip
+};
+
+//==============================================================================
 // Large loop button with built-in progress bar and waveform hint
 class TouchLoopButton : public juce::Component, public juce::Timer
 {
@@ -64,6 +89,7 @@ public:
 
     std::function<void(int)> onSelect;
     std::function<void(int)> onToggle;
+    LoopIndicatorData indicatorData;
 
     void triggerToggle() { if (onToggle) onToggle (slot); }
 
@@ -144,6 +170,7 @@ public:
             g.setColour (active ? PiColours::amber : PiColours::textDim);
             g.drawText (juce::String (slot + 1), bounds, juce::Justification::centred);
         }
+
     }
 
     void mouseDown (const juce::MouseEvent&) override
@@ -550,5 +577,308 @@ private:
             g.setFont (PiColours::make (12.0f));
             g.drawText ("Long press a loop button to record", wf, juce::Justification::centred);
         }
+    }
+};
+
+//==============================================================================
+// Mode B: Mini Mixer Strip — 8 mini channel meters in a thin horizontal row
+class MiniMixerStrip : public juce::Component, public juce::Timer
+{
+public:
+    MiniMixerStrip (LoopRecorder& recorder)
+        : loopRecorder (recorder)
+    {
+        startTimerHz (25);
+    }
+
+    ~MiniMixerStrip() override { stopTimer(); }
+
+    std::array<LoopIndicatorData, 8> loopData;
+
+    void timerCallback() override { repaint(); }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto bounds = getLocalBounds().toFloat();
+
+        // Background
+        g.setColour (PiColours::panelBg);
+        g.fillRoundedRectangle (bounds, 4.0f);
+        g.setColour (PiColours::panelBorder.withAlpha (0.4f));
+        g.drawRoundedRectangle (bounds.reduced (0.5f), 4.0f, 0.5f);
+
+        float slotW = bounds.getWidth() / 8.0f;
+
+        for (int i = 0; i < 8; ++i)
+        {
+            auto slotBounds = juce::Rectangle<float> (bounds.getX() + i * slotW, bounds.getY(),
+                                                       slotW, bounds.getHeight()).reduced (3.0f, 1.0f);
+
+            const auto& d = loopData[(size_t) i];
+
+            if (d.recording)
+            {
+                g.setColour (PiColours::recording.withAlpha (0.2f));
+                g.fillRoundedRectangle (slotBounds, 3.0f);
+                continue;
+            }
+
+            if (!d.active)
+            {
+                // Empty slot — faint outline
+                g.setColour (PiColours::panelBorder.withAlpha (0.2f));
+                g.drawRoundedRectangle (slotBounds, 3.0f, 0.5f);
+                continue;
+            }
+
+            // Volume meter — horizontal bar, 5px tall
+            {
+                auto meterRect = juce::Rectangle<float> (slotBounds.getX(), slotBounds.getY(),
+                                                          slotBounds.getWidth(), 5.0f);
+                // Track
+                g.setColour (juce::Colour (0xff0a0c18));
+                g.fillRoundedRectangle (meterRect, 2.0f);
+
+                // Fill
+                float effectiveVol = juce::jlimit (0.0f, 2.0f, d.volume) * d.automationLevel;
+                float fillNorm = effectiveVol / 2.0f;
+                auto fillRect = meterRect.withWidth (meterRect.getWidth() * fillNorm);
+                g.setColour (d.volumeModulated ? PiColours::accent.withAlpha (0.85f) : PiColours::amber.withAlpha (0.85f));
+                g.fillRoundedRectangle (fillRect, 2.0f);
+            }
+
+            // Filter band — thin line (2px), shows HP-LP window (always visible)
+            {
+                auto filterRect = juce::Rectangle<float> (slotBounds.getX(), slotBounds.getY() + 6.0f,
+                                                           slotBounds.getWidth(), 2.0f);
+                // Full range background
+                g.setColour (juce::Colour (0xff0a0c18));
+                g.fillRect (filterRect);
+
+                // HP-LP window (log-scaled) — full width when filters at default
+                float hpNorm = (std::log2 (juce::jlimit (20.0f, 20000.0f, d.hpFreq)) - std::log2 (20.0f))
+                                / (std::log2 (20000.0f) - std::log2 (20.0f));
+                float lpNorm = (std::log2 (juce::jlimit (20.0f, 20000.0f, d.lpFreq)) - std::log2 (20.0f))
+                                / (std::log2 (20000.0f) - std::log2 (20.0f));
+
+                float startX = filterRect.getX() + filterRect.getWidth() * hpNorm;
+                float endX = filterRect.getX() + filterRect.getWidth() * lpNorm;
+                auto windowRect = juce::Rectangle<float> (startX, filterRect.getY(),
+                                                           juce::jmax (1.0f, endX - startX),
+                                                           filterRect.getHeight());
+                g.setColour (PiColours::amber.withAlpha (0.7f));
+                g.fillRect (windowRect);
+            }
+
+        }
+    }
+
+private:
+    LoopRecorder& loopRecorder;
+};
+
+//==============================================================================
+// Mode C: Multi-Loop Overview — 8-column overview showing all loops side-by-side
+class MultiLoopOverview : public juce::Component, public juce::Timer
+{
+public:
+    MultiLoopOverview (LoopRecorder& recorder)
+        : loopRecorder (recorder)
+    {
+        startTimerHz (20);
+    }
+
+    ~MultiLoopOverview() override { stopTimer(); }
+
+    std::array<LoopIndicatorData, 8> loopData;
+
+    void timerCallback() override { repaint(); }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto bounds = getLocalBounds().toFloat();
+
+        // Background
+        g.setColour (PiColours::panelBg);
+        g.fillRoundedRectangle (bounds, 10.0f);
+        g.setColour (PiColours::panelBorder.withAlpha (0.4f));
+        g.drawRoundedRectangle (bounds.reduced (0.5f), 10.0f, 1.0f);
+
+        float colW = bounds.getWidth() / 8.0f;
+
+        for (int i = 0; i < 8; ++i)
+        {
+            auto col = juce::Rectangle<float> (bounds.getX() + i * colW, bounds.getY(),
+                                                colW, bounds.getHeight()).reduced (3.0f, 5.0f);
+
+            const auto& d = loopData[(size_t) i];
+            bool isSelected = (i == TouchLoopButton::selectedSlot);
+
+            // Column background
+            g.setColour (isSelected ? PiColours::panelRaised.brighter (0.05f) : PiColours::panelRaised);
+            g.fillRoundedRectangle (col, 5.0f);
+            g.setColour (isSelected ? PiColours::accent.withAlpha (0.3f) : PiColours::panelBorder.withAlpha (0.3f));
+            g.drawRoundedRectangle (col.reduced (0.5f), 5.0f, 0.5f);
+
+            // Slot number
+            g.setFont (PiColours::make (10.0f, true));
+            g.setColour (d.active ? PiColours::amber : PiColours::textDim);
+            g.drawText (juce::String (i + 1), col.removeFromTop (14.0f), juce::Justification::centred);
+
+            if (d.recording)
+            {
+                g.setFont (PiColours::make (10.0f, true));
+                g.setColour (PiColours::recording);
+                g.drawText ("REC", col, juce::Justification::centred);
+                continue;
+            }
+
+            if (!d.active)
+            {
+                g.setColour (PiColours::textDim.withAlpha (0.25f));
+                g.setFont (PiColours::make (9.0f));
+                g.drawText ("empty", col, juce::Justification::centred);
+                continue;
+            }
+
+            // Reserve bottom area for volume bar and filter indicator
+            auto volumeArea = col.removeFromBottom (10.0f);
+            auto filterArea = col.removeFromBottom (6.0f);
+            col.removeFromBottom (2.0f);  // gap
+
+            // Mini waveform
+            auto waveArea = col.reduced (1.0f, 2.0f);
+            paintMiniWaveform (g, waveArea, i);
+
+            // Filter band overlay on waveform
+            {
+                bool hpActive = d.hpFreq > 25.0f;
+                bool lpActive = d.lpFreq < 19000.0f;
+
+                if (hpActive || lpActive)
+                {
+                    float hpNorm = (std::log2 (juce::jlimit (20.0f, 20000.0f, d.hpFreq)) - std::log2 (20.0f))
+                                    / (std::log2 (20000.0f) - std::log2 (20.0f));
+                    float lpNorm = (std::log2 (juce::jlimit (20.0f, 20000.0f, d.lpFreq)) - std::log2 (20.0f))
+                                    / (std::log2 (20000.0f) - std::log2 (20.0f));
+
+                    // Dim regions outside HP-LP
+                    if (hpActive)
+                    {
+                        auto dimRect = juce::Rectangle<float> (waveArea.getX(), waveArea.getY(),
+                                                                waveArea.getWidth() * hpNorm, waveArea.getHeight());
+                        g.setColour (juce::Colour (0x50000000));
+                        g.fillRect (dimRect);
+                    }
+                    if (lpActive)
+                    {
+                        float startX = waveArea.getX() + waveArea.getWidth() * lpNorm;
+                        auto dimRect = juce::Rectangle<float> (startX, waveArea.getY(),
+                                                                waveArea.getRight() - startX, waveArea.getHeight());
+                        g.setColour (juce::Colour (0x50000000));
+                        g.fillRect (dimRect);
+                    }
+                }
+            }
+
+            // Filter indicator bar
+            {
+                g.setColour (juce::Colour (0xff0a0c18));
+                g.fillRoundedRectangle (filterArea, 2.0f);
+
+                float hpNorm = (std::log2 (juce::jlimit (20.0f, 20000.0f, d.hpFreq)) - std::log2 (20.0f))
+                                / (std::log2 (20000.0f) - std::log2 (20.0f));
+                float lpNorm = (std::log2 (juce::jlimit (20.0f, 20000.0f, d.lpFreq)) - std::log2 (20.0f))
+                                / (std::log2 (20000.0f) - std::log2 (20.0f));
+
+                float startX = filterArea.getX() + filterArea.getWidth() * hpNorm;
+                float endX = filterArea.getX() + filterArea.getWidth() * lpNorm;
+                auto windowRect = juce::Rectangle<float> (startX, filterArea.getY(),
+                                                           juce::jmax (1.0f, endX - startX),
+                                                           filterArea.getHeight());
+                g.setColour (PiColours::amber.withAlpha (0.6f));
+                g.fillRoundedRectangle (windowRect, 2.0f);
+            }
+
+            // Volume bar
+            {
+                g.setColour (juce::Colour (0xff0a0c18));
+                g.fillRoundedRectangle (volumeArea, 2.0f);
+
+                float effectiveVol = juce::jlimit (0.0f, 2.0f, d.volume) * d.automationLevel;
+                float fillNorm = effectiveVol / 2.0f;
+
+                auto fillRect = volumeArea.withWidth (volumeArea.getWidth() * fillNorm);
+                g.setColour (d.volumeModulated ? PiColours::accent.withAlpha (0.8f) : PiColours::amber.withAlpha (0.8f));
+                g.fillRoundedRectangle (fillRect, 2.0f);
+            }
+
+            // State badges
+            if (d.hasAutomation)
+            {
+                g.setFont (PiColours::make (8.0f, true));
+                g.setColour (PiColours::accent.withAlpha (0.7f));
+                g.drawText ("A", col.getX() + 1, col.getY(), 8, 8, juce::Justification::centredLeft);
+            }
+        }
+    }
+
+private:
+    LoopRecorder& loopRecorder;
+
+    void paintMiniWaveform (juce::Graphics& g, juce::Rectangle<float> area, int slot)
+    {
+        // Dark waveform background
+        g.setColour (juce::Colour (0xff0a0c18));
+        g.fillRoundedRectangle (area, 3.0f);
+
+        int length = loopRecorder.getSlotLength (slot);
+        if (length <= 0) return;
+
+        float trimStart = loopRecorder.getSlotTrimStart (slot);
+        float trimEnd = loopRecorder.getSlotTrimEnd (slot);
+
+        int width = (int) area.getWidth();
+        float centreY = area.getCentreY();
+        float halfH = area.getHeight() * 0.38f;
+
+        // Waveform path
+        juce::Path wavePath;
+        bool first = true;
+        for (int x = 0; x < width; x += 2)  // Skip every other pixel for performance
+        {
+            int sampleIdx = (x * length) / width;
+            float sample = loopRecorder.getSampleAtIndex (slot, sampleIdx);
+            float y = centreY - (sample * halfH);
+            if (first) { wavePath.startNewSubPath (area.getX() + x, y); first = false; }
+            else wavePath.lineTo (area.getX() + x, y);
+        }
+        g.setColour (PiColours::amber.withAlpha (0.5f));
+        g.strokePath (wavePath, juce::PathStrokeType (1.0f));
+
+        // Trim markers
+        if (trimStart > 0.001f)
+        {
+            float tx = area.getX() + area.getWidth() * trimStart;
+            g.setColour (PiColours::textDim.withAlpha (0.6f));
+            g.drawLine (tx, area.getY() + 1, tx, area.getBottom() - 1, 1.0f);
+        }
+        if (trimEnd < 0.999f)
+        {
+            float tx = area.getX() + area.getWidth() * trimEnd;
+            g.setColour (PiColours::textDim.withAlpha (0.6f));
+            g.drawLine (tx, area.getY() + 1, tx, area.getBottom() - 1, 1.0f);
+        }
+
+        // Playhead
+        float progress = loopRecorder.getSlotProgress (slot);
+        float playNorm = trimStart + progress * (trimEnd - trimStart);
+        float px = area.getX() + area.getWidth() * playNorm;
+        g.setColour (PiColours::accent.withAlpha (0.8f));
+        g.drawLine (px, area.getY() + 1, px, area.getBottom() - 1, 1.5f);
+
+        // Centre line
+        g.setColour (PiColours::panelBorder.withAlpha (0.15f));
+        g.drawLine (area.getX() + 2, centreY, area.getRight() - 2, centreY, 0.5f);
     }
 };

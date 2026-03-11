@@ -70,9 +70,21 @@ public:
     bool isEnabled() const { return enabled; }
     void setEnabled (bool b) { enabled = b; }
 
+    // Gain compensation (applied after effect processing)
+    void setGainCompensation (float gainDB) { gainCompDB = gainDB; }
+    float getGainCompensation() const { return gainCompDB; }
+    void setAutoGainComp (bool b) { autoGainComp = b; }
+    bool getAutoGainComp() const { return autoGainComp; }
+    float getAutoGainFactor() const { return autoGainFactor; }
+
 protected:
     bool enabled = true;
     double sampleRate = 44100.0;
+    float gainCompDB = 0.0f;     // Manual gain compensation in dB
+    bool autoGainComp = true;    // Auto gain compensation enabled by default
+
+    // Subclasses set this to indicate how much gain the effect adds
+    float autoGainFactor = 1.0f; // Multiplier for auto gain comp (calculated by effect)
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EffectBase)
 };

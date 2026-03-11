@@ -667,6 +667,7 @@ void MainComponent::updateEffectParameterKnobs()
     {
         paramKnobs[i].setVisible (false);
         paramKnobs[i].onValueChange = nullptr;
+        paramKnobs[i].textFromValueFunction = nullptr;
         paramLabels[i].setVisible (false);
     }
     for (int i = 0; i < 4; ++i)
@@ -728,9 +729,15 @@ void MainComponent::updateEffectParameterKnobs()
                            std::function<void(int)> onChange) {
         if (usePiLayout)
         {
-            // Render as a discrete knob (0 to N-1)
+            // Render as a discrete knob (0 to N-1), showing item name in text box
+            int knobIdx = numActiveKnobs;  // capture before addKnob increments it
             addKnob (name, 0, items.size() - 1, 1, selectedIdx,
                      [onChange](float v) { onChange ((int) v); });
+            paramKnobs[knobIdx].textFromValueFunction = [items](double v) {
+                int idx = juce::jlimit (0, items.size() - 1, (int) v);
+                return items[idx];
+            };
+            paramKnobs[knobIdx].updateText();
             return;
         }
         if (numActiveCombos >= 4) return;
@@ -753,9 +760,14 @@ void MainComponent::updateEffectParameterKnobs()
     auto addToggle = [this, &addKnob](const juce::String& name, bool value, std::function<void(bool)> onChange) {
         if (usePiLayout)
         {
-            // Render as a knob: 0 = off, 1 = on
+            // Render as a knob: 0 = Off, 1 = On, showing state name in text box
+            int knobIdx = numActiveKnobs;
             addKnob (name, 0, 1, 1, value ? 1.0 : 0.0,
                      [onChange](float v) { onChange (v >= 0.5f); });
+            paramKnobs[knobIdx].textFromValueFunction = [](double v) {
+                return juce::String (v >= 0.5 ? "On" : "Off");
+            };
+            paramKnobs[knobIdx].updateText();
             return;
         }
         if (numActiveToggles >= 4) return;
@@ -1809,6 +1821,29 @@ void MainComponent::timerCallback()
             }
         }
         loopLPSliders[i].setEnabled (!lpModulated);
+
+        // Populate indicator data for Pi layout components
+        if (usePiLayout)
+        {
+            LoopIndicatorData ind;
+            ind.active = loopRecorder.isSlotActive (i);
+            ind.recording = loopRecorder.isRecording() && loopRecorder.getRecordingSlot() == i;
+            ind.volume = loopRecorder.getSlotVolume (i);
+            ind.hpFreq = loopRecorder.getSlotHighPass (i);
+            ind.lpFreq = loopRecorder.getSlotLowPass (i);
+            ind.volumeModulated = volumeModulated;
+            ind.hpModulated = hpModulated;
+            ind.lpModulated = lpModulated;
+            ind.hasAutomation = hasLevelAutomation;
+            ind.automationLevel = loopRecorder.getSlotAutomationLevel (i);
+
+            if (piLoopButtons[i])
+                piLoopButtons[i]->indicatorData = ind;
+            if (piMiniMixer)
+                piMiniMixer->loopData[(size_t) i] = ind;
+            if (piMultiOverview)
+                piMultiOverview->loopData[(size_t) i] = ind;
+        }
     }
 
     // Handle Live/Loop mix modulation
@@ -2152,7 +2187,8 @@ void MainComponent::initPiLayout()
         updateDroneParameterKnobs();
         if (modulationPanel)
             modulationPanel->setVisible (false);
-        piLoopDetail->setVisible (true);
+        // Restore indicator mode layout via resized
+        resized();
         for (auto& btn : piLoopButtons)
             if (btn) btn->repaint();
     };
@@ -2164,10 +2200,10 @@ void MainComponent::initPiLayout()
         TouchLoopButton::selectedSlot = -1;
         piUpdateTabColors();
         updateEffectButtonColors();
-        // Hide detail strip and desktop modulation panel in Pi mode
-        piLoopDetail->setVisible (false);
+        // Hide desktop modulation panel in Pi mode; resized() handles indicator layout
         if (modulationPanel)
             modulationPanel->setVisible (false);
+        resized();
         // Populate bottom knobs with modulation encoder controls
         updateModulationParameterKnobs();
         for (auto& btn : piLoopButtons)
@@ -2193,6 +2229,31 @@ void MainComponent::initPiLayout()
     midiLearnButton.setColour (juce::TextButton::buttonColourId, PiColours::buttonBg);
     midiLearnButton.setColour (juce::TextButton::textColourOffId, PiColours::textDim);
 
+    // Create mini mixer strip (always visible except on mod tab)
+    piMiniMixer = std::make_unique<MiniMixerStrip> (loopRecorder);
+    addAndMakeVisible (*piMiniMixer);
+
+    // Create multi-loop overview (visible on mod tab only)
+    piMultiOverview = std::make_unique<MultiLoopOverview> (loopRecorder);
+    addChildComponent (*piMultiOverview);
+
+    // Dev push buttons — simulate encoder push buttons for testing without MIDI controller
+    for (int i = 0; i < 8; ++i)
+    {
+        piPushButtons[i].setButtonText ("P");
+        piPushButtons[i].setColour (juce::TextButton::buttonColourId, PiColours::panelRaised);
+        piPushButtons[i].setColour (juce::TextButton::textColourOffId, PiColours::textDim);
+        piPushButtons[i].onClick = [this, i] {
+            // Trigger the encoder bank's push button for this slot
+            encoderBank.handleNoteOn (VirtualEncoderBank::defaultNoteBase + i);
+            // Also send NoteOff shortly after (fire-and-forget)
+            juce::Timer::callAfterDelay (100, [this, i] {
+                encoderBank.handleNoteOff (VirtualEncoderBank::defaultNoteBase + i);
+            });
+        };
+        addAndMakeVisible (piPushButtons[i]);
+    }
+
     // Start in loop mode with loop 0 selected
     piLoopMode = true;
     piSelectLoop (0);
@@ -2206,8 +2267,7 @@ void MainComponent::piSelectLoop (int slot)
     selectedEffectSlot = -1;
     updateEffectButtonColors();
 
-    // Restore loop detail strip (may have been replaced by mod panel)
-    piLoopDetail->setVisible (true);
+    // Restore indicator layout (may have been replaced by mod panel)
     if (modulationPanel)
         modulationPanel->setVisible (false);
 
@@ -2221,6 +2281,7 @@ void MainComponent::piSelectLoop (int slot)
     piLoopDetail->setSelectedLoop (slot);
     piSyncDetailToLoop (slot);
     updateLoopParameterKnobs();
+    resized();
 
     for (auto& btn : piLoopButtons)
         if (btn) btn->repaint();
@@ -2234,8 +2295,7 @@ void MainComponent::piSelectEffect (int slot)
     TouchLoopButton::selectedSlot = -1;
     selectedEffectSlot = slot;
 
-    // Restore loop detail strip
-    piLoopDetail->setVisible (true);
+    // Restore indicator layout
     if (modulationPanel)
         modulationPanel->setVisible (false);
 
@@ -2246,6 +2306,7 @@ void MainComponent::piSelectEffect (int slot)
 
     updateEffectButtonColors();
     updateEffectParameterKnobs();
+    resized();
 
     for (auto& btn : piLoopButtons)
         if (btn) btn->repaint();
@@ -2278,6 +2339,7 @@ void MainComponent::updateDroneParameterKnobs()
     {
         paramKnobs[i].setVisible (false);
         paramKnobs[i].onValueChange = nullptr;
+        paramKnobs[i].textFromValueFunction = nullptr;
         paramLabels[i].setVisible (false);
     }
     for (int i = 0; i < 4; ++i)
@@ -2417,6 +2479,7 @@ void MainComponent::updateLoopParameterKnobs()
     {
         paramKnobs[i].setVisible (false);
         paramKnobs[i].onValueChange = nullptr;
+        paramKnobs[i].textFromValueFunction = nullptr;
         paramLabels[i].setVisible (false);
     }
     for (int i = 0; i < 4; ++i)
@@ -2494,6 +2557,7 @@ void MainComponent::updateLoopParameterKnobs()
     // Knob 4: Automation preset selector
     {
         auto settings = loopRecorder.getSlotSettings (slot);
+        int autoKnobIdx = numActiveKnobs;
         addKnob ("Auto", 0, AutomationPresets::numPresets - 1, 1, settings.presetIndex,
                  [this](float v) {
                      int s = TouchLoopButton::selectedSlot;
@@ -2503,13 +2567,12 @@ void MainComponent::updateLoopParameterKnobs()
                      slotSettings.presetIndex = presetIdx;
                      slotSettings.postRecordSequence = applyPresetWithTimeScale (presetIdx, slotSettings.timeScale);
                      loopRecorder.setSlotSettings (s, slotSettings);
-                     // Update knob label to show preset name
-                     paramLabels[3].setText (juce::String (AutomationPresets::presets[presetIdx].name),
-                                             juce::dontSendNotification);
                  });
-        // Show preset name as label
-        paramLabels[3].setText (juce::String (AutomationPresets::presets[settings.presetIndex].name),
-                                juce::dontSendNotification);
+        paramKnobs[autoKnobIdx].textFromValueFunction = [](double v) {
+            int idx = juce::jlimit (0, AutomationPresets::numPresets - 1, (int) v);
+            return juce::String (AutomationPresets::presets[idx].name);
+        };
+        paramKnobs[autoKnobIdx].updateText();
     }
 
     // Knob 5: Time scale (0.1x to 10.0x)
@@ -2526,25 +2589,59 @@ void MainComponent::updateLoopParameterKnobs()
                  }, "x");
     }
 
-    // Knob 6: High pass
-    addKnob ("HP", 20, 5000, 1, loopHPSliders[slot].getValue(),
-             [this](float v) {
-                 int s = TouchLoopButton::selectedSlot;
-                 if (s >= 0) {
-                     loopRecorder.setSlotHighPass (s, v);
-                     loopHPSliders[s].setValue (v, juce::dontSendNotification);
-                 }
-             }, " Hz");
+    // Knob 6: High pass (log-scaled: 0-1 normalized, mapped to 20-5000 Hz)
+    {
+        const double hpMin = 20.0, hpMax = 5000.0;
+        double currentHP = loopHPSliders[slot].getValue();
+        // Convert current Hz to normalized 0-1 log position
+        double hpNorm = (std::log (currentHP) - std::log (hpMin)) / (std::log (hpMax) - std::log (hpMin));
+        hpNorm = juce::jlimit (0.0, 1.0, hpNorm);
 
-    // Knob 7: Low pass
-    addKnob ("LP", 200, 20000, 1, loopLPSliders[slot].getValue(),
-             [this](float v) {
-                 int s = TouchLoopButton::selectedSlot;
-                 if (s >= 0) {
-                     loopRecorder.setSlotLowPass (s, v);
-                     loopLPSliders[s].setValue (v, juce::dontSendNotification);
-                 }
-             }, " Hz");
+        addKnob ("HP", 0, 1, 0.005, hpNorm,
+                 [this](float v) {
+                     int s = TouchLoopButton::selectedSlot;
+                     if (s >= 0) {
+                         float hz = 20.0f * std::pow (5000.0f / 20.0f, v);
+                         loopRecorder.setSlotHighPass (s, hz);
+                         loopHPSliders[s].setValue (hz, juce::dontSendNotification);
+                     }
+                 });
+        // Show Hz in the text box below the knob
+        paramKnobs[numActiveKnobs - 1].textFromValueFunction = [](double v) {
+            float hz = 20.0f * std::pow (5000.0f / 20.0f, (float) v);
+            int freq = (int) hz;
+            if (freq >= 1000) return juce::String (freq / 1000.0f, 1) + "k";
+            return juce::String (freq) + " Hz";
+        };
+        paramKnobs[numActiveKnobs - 1].updateText();
+    }
+
+    // Knob 7: Low pass (log-scaled: 0-1 normalized, mapped to 200-20000 Hz)
+    {
+        const double lpMin = 200.0, lpMax = 20000.0;
+        double currentLP = loopLPSliders[slot].getValue();
+        // Convert current Hz to normalized 0-1 log position
+        double lpNorm = (std::log (currentLP) - std::log (lpMin)) / (std::log (lpMax) - std::log (lpMin));
+        lpNorm = juce::jlimit (0.0, 1.0, lpNorm);
+
+        addKnob ("LP", 0, 1, 0.005, lpNorm,
+                 [this](float v) {
+                     int s = TouchLoopButton::selectedSlot;
+                     if (s >= 0) {
+                         float hz = 200.0f * std::pow (20000.0f / 200.0f, v);
+                         loopRecorder.setSlotLowPass (s, hz);
+                         loopLPSliders[s].setValue (hz, juce::dontSendNotification);
+                     }
+                 });
+        // Show Hz in the text box below the knob
+        paramKnobs[numActiveKnobs - 1].textFromValueFunction = [](double v) {
+            float hz = 200.0f * std::pow (20000.0f / 200.0f, (float) v);
+            int freq = (int) hz;
+            if (freq >= 1000) return juce::String (freq / 1000.0f, 1) + "k";
+            return juce::String (freq) + " Hz";
+        };
+        paramKnobs[numActiveKnobs - 1].updateText();
+    }
 
     // Knob 8: Volume
     addKnob ("Vol", 0, 2, 0.01, loopVolumeSliders[slot].getValue(),
@@ -2567,6 +2664,150 @@ void MainComponent::updateLoopParameterKnobs()
     });
 
     // Push button 5: (reserved for future use)
+
+    // Grey out automation knobs (4 & 5) if this loop's volume is being modulated
+    bool volumeModulated = modulationManager.isTargetModulated (ModulationTarget::Type::LoopVolume, slot);
+    if (volumeModulated)
+    {
+        paramKnobs[3].setEnabled (false);  // Automation preset
+        paramKnobs[4].setEnabled (false);  // Time scale
+    }
+
+    // Repurpose volume knob as automation range modifier when automation is active
+    bool hasLevelAutomation = loopRecorder.slotHasLevelAutomation (slot);
+    if (hasLevelAutomation)
+    {
+        auto& knob = paramKnobs[7];
+        auto& label = paramLabels[7];
+
+        knob.setRange (0, 1, 0.01);
+        knob.setValue (0.5, juce::dontSendNotification);
+        knob.setTextValueSuffix ("");
+        knob.textFromValueFunction = [](double v) {
+            if (std::abs (v - 0.5) < 0.01) return juce::String ("--");
+            return juce::String ((v - 0.5) * 200.0, 0) + "%";
+        };
+        knob.updateText();
+        knob.setEnabled (true);
+
+        label.setText ("Vol Rng", juce::dontSendNotification);
+
+        knob.onValueChange = [this, slot] {
+            float v = (float) paramKnobs[7].getValue();
+            if (v < 0.49f)
+            {
+                // Below center: reduce max. At 0, max = min (fully squashed)
+                float t = v / 0.5f;  // 0 to 1
+                loopRecorder.setSlotAutomationRange (slot, 0.0f, t);
+            }
+            else if (v > 0.51f)
+            {
+                // Above center: increase min. At 1, min = max (fully squashed at top)
+                float t = (v - 0.5f) / 0.5f;  // 0 to 1
+                loopRecorder.setSlotAutomationRange (slot, t, 1.0f);
+            }
+            else
+            {
+                // Center: full range
+                loopRecorder.setSlotAutomationRange (slot, 0.0f, 1.0f);
+            }
+        };
+
+        if (7 < VirtualEncoderBank::numEncoders)
+        {
+            encoderBank.bindEncoder (7, "Vol Rng", 0, 1, 0.01,
+                [this](float v) {
+                    paramKnobs[7].setValue (v, juce::dontSendNotification);
+                    paramKnobs[7].onValueChange();
+                },
+                [this]() -> float {
+                    return (float) paramKnobs[7].getValue();
+                });
+        }
+    }
+
+    // Repurpose modulated parameter knobs as range modifiers
+    // Center (0.5) = no impact, below = reduce max, above = increase min
+    auto setupModRangeKnob = [this, slot](int knobIndex, ModulationTarget::Type targetType, const juce::String& name) {
+        auto& knob = paramKnobs[knobIndex];
+        auto& label = paramLabels[knobIndex];
+
+        // Find the current modulation offset (check if we already adjusted)
+        float defMin, defMax;
+        ModulationTarget::getDefaultRange (targetType, defMin, defMax);
+
+        knob.setRange (0, 1, 0.01);
+        knob.setValue (0.5, juce::dontSendNotification);
+        knob.setTextValueSuffix ("");
+        knob.textFromValueFunction = [](double v) {
+            if (std::abs (v - 0.5) < 0.01) return juce::String ("--");
+            return juce::String ((v - 0.5) * 200.0, 0) + "%";
+        };
+        knob.updateText();
+        knob.setEnabled (true);
+
+        label.setText (name + " Mod", juce::dontSendNotification);
+
+        knob.onValueChange = [this, slot, targetType, knobIndex, defMin, defMax] {
+            float v = (float) paramKnobs[knobIndex].getValue();
+            // Find the modulation source targeting this parameter on this slot
+            for (int si = 0; si < modulationManager.getNumSources(); ++si)
+            {
+                auto* src = modulationManager.getSource (si);
+                if (!src) continue;
+                for (int ti = 0; ti < 3; ++ti)
+                {
+                    auto& tgt = src->getTarget (ti);
+                    if (tgt.type == targetType && tgt.index == slot)
+                    {
+                        if (v < 0.49f)
+                        {
+                            // Below center: reduce max. At 0, max = min (fully squashed)
+                            float t = v / 0.5f;  // 0 to 1
+                            tgt.rangeMax = defMin + t * (defMax - defMin);
+                            tgt.rangeMin = defMin;
+                        }
+                        else if (v > 0.51f)
+                        {
+                            // Above center: increase min. At 1, min = max (fully squashed)
+                            float t = (v - 0.5f) / 0.5f;  // 0 to 1
+                            tgt.rangeMin = defMin + t * (defMax - defMin);
+                            tgt.rangeMax = defMax;
+                        }
+                        else
+                        {
+                            // Center: full range
+                            tgt.rangeMin = defMin;
+                            tgt.rangeMax = defMax;
+                        }
+                    }
+                }
+            }
+        };
+
+        if (knobIndex < VirtualEncoderBank::numEncoders)
+        {
+            encoderBank.bindEncoder (knobIndex, name + " Mod", 0, 1, 0.01,
+                [this, knobIndex](float v) {
+                    paramKnobs[knobIndex].setValue (v, juce::dontSendNotification);
+                    paramKnobs[knobIndex].onValueChange();
+                },
+                [this, knobIndex]() -> float {
+                    return (float) paramKnobs[knobIndex].getValue();
+                });
+        }
+    };
+
+    if (volumeModulated)
+        setupModRangeKnob (7, ModulationTarget::Type::LoopVolume, "Vol");
+
+    bool hpModulated = modulationManager.isTargetModulated (ModulationTarget::Type::LoopFilterHP, slot);
+    if (hpModulated)
+        setupModRangeKnob (5, ModulationTarget::Type::LoopFilterHP, "HP");
+
+    bool lpModulated = modulationManager.isTargetModulated (ModulationTarget::Type::LoopFilterLP, slot);
+    if (lpModulated)
+        setupModRangeKnob (6, ModulationTarget::Type::LoopFilterLP, "LP");
 
     resized();
 }
@@ -2707,6 +2948,7 @@ void MainComponent::updateModulationParameterKnobs()
     {
         paramKnobs[i].setVisible (false);
         paramKnobs[i].onValueChange = nullptr;
+        paramKnobs[i].textFromValueFunction = nullptr;
         paramLabels[i].setVisible (false);
     }
     for (int i = 0; i < 4; ++i)
@@ -2734,10 +2976,33 @@ void MainComponent::updateModulationParameterKnobs()
     auto& target = source->getTarget (piModTargetSlot);
     ModTargetLookup::findIndices (target, piModParentIndex, piModChildIndex);
 
-    // Get children for current parent
-    const ModTargetLookup::ChildInfo* children = nullptr;
-    int numChildren = 0;
-    ModTargetLookup::getChildren (piModParentIndex, children, numChildren);
+    // Get children for current parent, filtering out Volume if loop has automation
+    const ModTargetLookup::ChildInfo* rawChildren = nullptr;
+    int rawNumChildren = 0;
+    ModTargetLookup::getChildren (piModParentIndex, rawChildren, rawNumChildren);
+
+    // For loop parents, filter out Volume if that loop has level automation
+    static ModTargetLookup::ChildInfo filteredChildren[8];
+    const ModTargetLookup::ChildInfo* children = rawChildren;
+    int numChildren = rawNumChildren;
+
+    if (piModParentIndex >= 1 && piModParentIndex <= 8)
+    {
+        int loopIdx = piModParentIndex - 1;
+        bool loopHasAutomation = loopRecorder.slotHasLevelAutomation (loopIdx);
+        if (loopHasAutomation)
+        {
+            int filtered = 0;
+            for (int i = 0; i < rawNumChildren; ++i)
+            {
+                if (rawChildren[i].type != ModulationTarget::Type::LoopVolume)
+                    filteredChildren[filtered++] = rawChildren[i];
+            }
+            children = filteredChildren;
+            numChildren = filtered;
+        }
+    }
+
     piModChildIndex = (numChildren > 0) ? juce::jlimit (0, numChildren - 1, piModChildIndex) : 0;
 
     // Helper: determine source type
@@ -2790,25 +3055,53 @@ void MainComponent::updateModulationParameterKnobs()
     }
 
     // ===== ENCODER 1: Modulator selector =====
-    addKnob (sourceNames[piModSourceIndex], 0, modulationManager.getNumSources() - 1, 1,
-             piModSourceIndex,
-             [this](float v) {
-                 int newIdx = juce::jlimit (0, modulationManager.getNumSources() - 1, (int) v);
-                 if (newIdx != piModSourceIndex)
-                 {
-                     piModSourceIndex = newIdx;
-                     updateModulationParameterKnobs();
-                 }
-             });
+    {
+        int srcKnobIdx = numActiveKnobs;
+        addKnob ("Source", 0, modulationManager.getNumSources() - 1, 1,
+                 piModSourceIndex,
+                 [this, sourceNames](float v) {
+                     int newIdx = juce::jlimit (0, modulationManager.getNumSources() - 1, (int) v);
+                     if (newIdx != piModSourceIndex)
+                     {
+                         piModSourceIndex = newIdx;
+                         updateModulationParameterKnobs();
+                     }
+                 });
+        paramKnobs[srcKnobIdx].textFromValueFunction = [sourceNames](double v) {
+            int idx = juce::jlimit (0, sourceNames.size() - 1, (int) v);
+            return sourceNames[idx];
+        };
+        paramKnobs[srcKnobIdx].updateText();
+    }
 
     // ===== ENCODER 2: Param 1 (Rate / Attack) =====
     if (lfo)
     {
-        addKnob ("Rate", 0.002, 10, 0.001, lfo->getRate(),
-                 [this](float v) {
-                     auto* l = dynamic_cast<LFOSource*> (modulationManager.getSource (piModSourceIndex));
-                     if (l) l->setRate (v);
-                 }, " Hz");
+        {
+            // Log-scaled rate: 0-1 normalized, mapped to 0.001-3000 Hz
+            const double rateMin = 0.001, rateMax = 3000.0;
+            double currentRate = lfo->getRate();
+            double rateNorm = (std::log (juce::jmax (rateMin, currentRate)) - std::log (rateMin))
+                              / (std::log (rateMax) - std::log (rateMin));
+            rateNorm = juce::jlimit (0.0, 1.0, rateNorm);
+            int rateKnobIdx = numActiveKnobs;
+            addKnob ("Rate", 0, 1, 0.002, rateNorm,
+                     [this](float v) {
+                         float hz = 0.001f * std::pow (3000.0f / 0.001f, v);
+                         auto* l = dynamic_cast<LFOSource*> (modulationManager.getSource (piModSourceIndex));
+                         if (l) l->setRate (hz);
+                     });
+            paramKnobs[rateKnobIdx].textFromValueFunction = [](double v) {
+                float hz = 0.001f * std::pow (3000.0f / 0.001f, (float) v);
+                if (hz >= 1000.0f)
+                    return juce::String (hz / 1000.0f, 1) + "kHz";
+                else if (hz >= 1.0f)
+                    return juce::String (hz, 1) + "Hz";
+                else
+                    return juce::String (hz, 3) + "Hz";
+            };
+            paramKnobs[rateKnobIdx].updateText();
+        }
     }
     else if (env)
     {
@@ -2819,22 +3112,52 @@ void MainComponent::updateModulationParameterKnobs()
     }
     else if (rnd)
     {
-        addKnob ("Rate", 0.002, 10, 0.001, rnd->getRate(),
-                 [this](float v) {
-                     int ri = piModSourceIndex - ModulationManager::numLFOs - ModulationManager::numEnvelopes;
-                     if (ri >= 0 && ri < ModulationManager::numRandomizers)
-                         modulationManager.getRandomizer (ri).setRate (v);
-                 }, " Hz");
+        {
+            const double rateMin = 0.001, rateMax = 3000.0;
+            double currentRate = rnd->getRate();
+            double rateNorm = (std::log (juce::jmax (rateMin, currentRate)) - std::log (rateMin))
+                              / (std::log (rateMax) - std::log (rateMin));
+            rateNorm = juce::jlimit (0.0, 1.0, rateNorm);
+            int rateKnobIdx = numActiveKnobs;
+            addKnob ("Rate", 0, 1, 0.002, rateNorm,
+                     [this](float v) {
+                         float hz = 0.001f * std::pow (3000.0f / 0.001f, v);
+                         int ri = piModSourceIndex - ModulationManager::numLFOs - ModulationManager::numEnvelopes;
+                         if (ri >= 0 && ri < ModulationManager::numRandomizers)
+                             modulationManager.getRandomizer (ri).setRate (hz);
+                     });
+            paramKnobs[rateKnobIdx].textFromValueFunction = [](double v) {
+                float hz = 0.001f * std::pow (3000.0f / 0.001f, (float) v);
+                if (hz >= 1000.0f)
+                    return juce::String (hz / 1000.0f, 1) + "kHz";
+                else if (hz >= 1.0f)
+                    return juce::String (hz, 1) + "Hz";
+                else
+                    return juce::String (hz, 3) + "Hz";
+            };
+            paramKnobs[rateKnobIdx].updateText();
+        }
     }
 
     // ===== ENCODER 3: Param 2 (Waveform / Release / Smoothness) =====
     if (lfo)
     {
-        addKnob ("Shape", 0, 5, 1, (int) lfo->getWaveform(),
-                 [this](float v) {
-                     auto* l = dynamic_cast<LFOSource*> (modulationManager.getSource (piModSourceIndex));
-                     if (l) l->setWaveform (static_cast<LFOSource::Waveform> (juce::jlimit (0, 5, (int) v)));
-                 });
+        {
+            int shapeIdx = (int) lfo->getWaveform();
+            int knobIdx = numActiveKnobs;
+            addKnob ("Shape", 0, 5, 1, shapeIdx,
+                     [this](float v) {
+                         int idx = juce::jlimit (0, 5, (int) v);
+                         auto* l = dynamic_cast<LFOSource*> (modulationManager.getSource (piModSourceIndex));
+                         if (l) l->setWaveform (static_cast<LFOSource::Waveform> (idx));
+                     });
+            paramKnobs[knobIdx].textFromValueFunction = [](double v) {
+                static const char* names[] = { "Sine", "Tri", "Square", "SawUp", "SawDn", "S&H" };
+                int idx = juce::jlimit (0, 5, (int) v);
+                return juce::String (names[idx]);
+            };
+            paramKnobs[knobIdx].updateText();
+        }
     }
     else if (env)
     {
@@ -2865,48 +3188,55 @@ void MainComponent::updateModulationParameterKnobs()
              });
 
     // ===== ENCODER 5: Target parent =====
-    addKnob (ModTargetLookup::parents[piModParentIndex].name,
-             0, ModTargetLookup::numParents - 1, 1, piModParentIndex,
-             [this](float v) {
-                 int newParent = juce::jlimit (0, ModTargetLookup::numParents - 1, (int) v);
-                 if (newParent != piModParentIndex)
-                 {
-                     piModParentIndex = newParent;
-                     piModChildIndex = 0;
-                     // Apply target change
-                     auto* src = modulationManager.getSource (piModSourceIndex);
-                     if (src)
+    {
+        int parentKnobIdx = numActiveKnobs;
+        addKnob ("Target", 0, ModTargetLookup::numParents - 1, 1, piModParentIndex,
+                 [this](float v) {
+                     int newParent = juce::jlimit (0, ModTargetLookup::numParents - 1, (int) v);
+                     if (newParent != piModParentIndex)
                      {
-                         if (piModParentIndex == 0)
+                         piModParentIndex = newParent;
+                         piModChildIndex = 0;
+                         // Apply target change
+                         auto* src = modulationManager.getSource (piModSourceIndex);
+                         if (src)
                          {
-                             // None
-                             ModulationTarget t;
-                             src->setTarget (piModTargetSlot, t);
-                         }
-                         else
-                         {
-                             const ModTargetLookup::ChildInfo* ch = nullptr;
-                             int nc = 0;
-                             ModTargetLookup::getChildren (piModParentIndex, ch, nc);
-                             if (nc > 0)
+                             if (piModParentIndex == 0)
                              {
+                                 // None
                                  ModulationTarget t;
-                                 t.type = ch[0].type;
-                                 t.index = (piModParentIndex >= 1 && piModParentIndex <= 8) ? piModParentIndex - 1 : 0;
-                                 ModulationTarget::getDefaultRange (t.type, t.rangeMin, t.rangeMax);
                                  src->setTarget (piModTargetSlot, t);
                              }
+                             else
+                             {
+                                 const ModTargetLookup::ChildInfo* ch = nullptr;
+                                 int nc = 0;
+                                 ModTargetLookup::getChildren (piModParentIndex, ch, nc);
+                                 if (nc > 0)
+                                 {
+                                     ModulationTarget t;
+                                     t.type = ch[0].type;
+                                     t.index = (piModParentIndex >= 1 && piModParentIndex <= 8) ? piModParentIndex - 1 : 0;
+                                     ModulationTarget::getDefaultRange (t.type, t.rangeMin, t.rangeMax);
+                                     src->setTarget (piModTargetSlot, t);
+                                 }
+                             }
                          }
+                         updateModulationParameterKnobs();
                      }
-                     updateModulationParameterKnobs();
-                 }
-             });
+                 });
+        paramKnobs[parentKnobIdx].textFromValueFunction = [](double v) {
+            int idx = juce::jlimit (0, ModTargetLookup::numParents - 1, (int) v);
+            return juce::String (ModTargetLookup::parents[idx].name);
+        };
+        paramKnobs[parentKnobIdx].updateText();
+    }
 
     // ===== ENCODER 6: Target child =====
     if (numChildren > 0)
     {
-        addKnob (children[piModChildIndex].name,
-                 0, numChildren - 1, 1, piModChildIndex,
+        int childKnobIdx = numActiveKnobs;
+        addKnob ("Param", 0, numChildren - 1, 1, piModChildIndex,
                  [this, children, numChildren](float v) {
                      int newChild = juce::jlimit (0, numChildren - 1, (int) v);
                      if (newChild != piModChildIndex)
@@ -2931,6 +3261,11 @@ void MainComponent::updateModulationParameterKnobs()
                          updateModulationParameterKnobs();
                      }
                  });
+        paramKnobs[childKnobIdx].textFromValueFunction = [children, numChildren](double v) {
+            int idx = juce::jlimit (0, numChildren - 1, (int) v);
+            return juce::String (children[idx].name);
+        };
+        paramKnobs[childKnobIdx].updateText();
     }
     else
     {
@@ -3104,6 +3439,7 @@ void MainComponent::resizedPi()
     cornerRight.removeFromRight (2);
     bypassButton.setVisible (true);
     bypassButton.setBounds (cornerRight.reduced (2, 5));
+    piIndicatorModeButton.setVisible (false);
 
     header.removeFromRight (6);
 
@@ -3148,11 +3484,36 @@ void MainComponent::resizedPi()
         effectButtons[i].setBounds (effectsArea.removeFromLeft (effectWidth).reduced (3, 1));
     }
 
-    // === Detail strip fills the space between loop buttons and effects row ===
+    // === Detail strip / indicator layout ===
     int detailTop = bounds.getY();
     int detailBottom = effectsArea.getY() - gap;
     auto detailArea = juce::Rectangle<int> (4, detailTop, getWidth() - 8, detailBottom - detailTop);
-    piLoopDetail->setBounds (detailArea);
+
+    if (activeTab == 2)
+    {
+        // Mod tab: show multi-loop overview, hide mini mixer and detail strip
+        piMiniMixer->setVisible (false);
+        piLoopDetail->setVisible (false);
+        piMultiOverview->setVisible (true);
+        piMultiOverview->setBounds (detailArea);
+    }
+    else
+    {
+        // All other tabs: mini mixer strip on top, detail strip below
+        const int mixerH = 14;
+        auto mixerArea = juce::Rectangle<int> (detailArea.getX(), detailArea.getY(),
+                                                detailArea.getWidth(), mixerH);
+        piMiniMixer->setVisible (true);
+        piMiniMixer->setBounds (mixerArea);
+
+        auto remainingDetail = juce::Rectangle<int> (detailArea.getX(),
+                                                      detailArea.getY() + mixerH + gap,
+                                                      detailArea.getWidth(),
+                                                      detailArea.getHeight() - mixerH - gap);
+        piLoopDetail->setVisible (true);
+        piLoopDetail->setBounds (remainingDetail);
+        piMultiOverview->setVisible (false);
+    }
 
     // === Parameter knobs: 8 slots, all rotary ===
     const int numSlots = 8;
@@ -3168,6 +3529,23 @@ void MainComponent::resizedPi()
             paramLabels[i].setBounds (slotX, paramArea.getY(), knobSize, labelHeight);
             paramKnobs[i].setBounds (slotX, paramArea.getY() + labelHeight,
                                      knobSize, knobSize);
+        }
+    }
+
+    // Dev push buttons — positioned to the right of each knob
+    for (int i = 0; i < 8; ++i)
+    {
+        if (i < numActiveKnobs)
+        {
+            int slotX = paramArea.getX() + i * slotWidth + (slotWidth - knobSize) / 2;
+            int btnX = slotX + knobSize - 2;
+            int btnY = paramArea.getY() + labelHeight;
+            piPushButtons[i].setBounds (btnX, btnY, 16, 16);
+            piPushButtons[i].setVisible (true);
+        }
+        else
+        {
+            piPushButtons[i].setVisible (false);
         }
     }
 

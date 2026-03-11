@@ -52,6 +52,8 @@ struct ModulationTarget
         switch (t)
         {
             case Type::LoopVolume:
+                outMin = 0.0f; outMax = 2.0f; break;
+
             case Type::DelayDryWet:
             case Type::DistortionDryWet:
             case Type::TapeDryWet:

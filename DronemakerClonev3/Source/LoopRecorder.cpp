@@ -258,7 +258,9 @@ float LoopRecorder::getLoopMix()
         // Process executor every sample (even if not playing, to keep automation running)
         if (slot.executor.isRunning())
         {
-            slot.automationLevel = slot.executor.processSample (currentSampleRate);
+            float rawLevel = slot.executor.processSample (currentSampleRate);
+            // Map through automation range modifier
+            slot.automationLevel = slot.automationRangeMin + rawLevel * (slot.automationRangeMax - slot.automationRangeMin);
         }
         // Always update isPlaying from executor state (it persists after sequence ends)
         slot.isPlaying = slot.executor.isPlaybackEnabled();
@@ -448,6 +450,27 @@ bool LoopRecorder::slotHasLevelAutomation (int slot) const
     return false;
 }
 
+void LoopRecorder::setSlotAutomationRange (int slot, float rangeMin, float rangeMax)
+{
+    if (slot >= 0 && slot < numSlots)
+    {
+        slots[slot].automationRangeMin = juce::jlimit (0.0f, 1.0f, rangeMin);
+        slots[slot].automationRangeMax = juce::jlimit (0.0f, 1.0f, rangeMax);
+    }
+}
+
+float LoopRecorder::getSlotAutomationRangeMin (int slot) const
+{
+    if (slot >= 0 && slot < numSlots) return slots[slot].automationRangeMin;
+    return 0.0f;
+}
+
+float LoopRecorder::getSlotAutomationRangeMax (int slot) const
+{
+    if (slot >= 0 && slot < numSlots) return slots[slot].automationRangeMax;
+    return 1.0f;
+}
+
 float LoopRecorder::getSlotLastFilteredSample (int slot) const
 {
     if (slot < 0 || slot >= numSlots)
@@ -465,4 +488,40 @@ float LoopRecorder::getSampleAtIndex (int slot, int index) const
         return 0.0f;
 
     return s.buffer[index];
+}
+
+float LoopRecorder::getSlotVolume (int slot) const
+{
+    if (slot < 0 || slot >= numSlots) return 1.0f;
+    return slots[slot].volume;
+}
+
+float LoopRecorder::getSlotHighPass (int slot) const
+{
+    if (slot < 0 || slot >= numSlots) return 20.0f;
+    return slots[slot].hpFreq;
+}
+
+float LoopRecorder::getSlotLowPass (int slot) const
+{
+    if (slot < 0 || slot >= numSlots) return 20000.0f;
+    return slots[slot].lpFreq;
+}
+
+float LoopRecorder::getSlotVolumeMod (int slot) const
+{
+    if (slot < 0 || slot >= numSlots) return 0.0f;
+    return slots[slot].volumeMod;
+}
+
+float LoopRecorder::getSlotHPMod (int slot) const
+{
+    if (slot < 0 || slot >= numSlots) return 0.0f;
+    return slots[slot].hpFreqMod;
+}
+
+float LoopRecorder::getSlotLPMod (int slot) const
+{
+    if (slot < 0 || slot >= numSlots) return 0.0f;
+    return slots[slot].lpFreqMod;
 }

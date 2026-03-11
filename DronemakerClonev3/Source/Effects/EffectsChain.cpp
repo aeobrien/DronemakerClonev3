@@ -1,4 +1,5 @@
 #include "EffectsChain.h"
+#include <cmath>
 #include "FilterEffect.h"
 #include "DelayEffect.h"
 #include "GranularEffect.h"
@@ -40,8 +41,24 @@ void EffectsChain::processSample (float& left, float& right)
         int effectIdx = routingOrder[i].load();
         if (effectIdx >= 0 && effectIdx < numEffects && effects[effectIdx])
         {
-            if (effects[effectIdx]->isEnabled())
-                effects[effectIdx]->processSample (left, right);
+            auto* effect = effects[effectIdx].get();
+            if (effect->isEnabled())
+            {
+                effect->processSample (left, right);
+
+                // Apply gain compensation
+                float gainFactor = 1.0f;
+                if (effect->getAutoGainComp())
+                    gainFactor *= effect->getAutoGainFactor();
+                float manualDB = effect->getGainCompensation();
+                if (std::abs (manualDB) > 0.01f)
+                    gainFactor *= std::pow (10.0f, manualDB / 20.0f);
+                if (std::abs (gainFactor - 1.0f) > 0.001f)
+                {
+                    left *= gainFactor;
+                    right *= gainFactor;
+                }
+            }
         }
     }
 }

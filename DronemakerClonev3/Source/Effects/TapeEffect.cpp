@@ -78,6 +78,10 @@ void TapeEffect::processSample (float& left, float& right)
     float hfLoss = hfLossSmooth.getNextValue();
     float dryWet = dryWetSmooth.getNextValue();
 
+    // Auto gain comp: tape saturation with high intensity can boost perceived level
+    float intensity = 1.0f + saturation * 8.0f;
+    autoGainFactor = (intensity > 1.5f) ? std::tanh (intensity) / intensity : 1.0f;
+
     float dryL = left;
     float dryR = right;
 
