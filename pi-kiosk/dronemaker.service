@@ -7,6 +7,10 @@ Wants=sound.target
 Type=simple
 User=pi
 Environment=HOME=/home/pi
+TTYPath=/dev/tty1
+StandardInput=tty
+TTYReset=yes
+TTYVHangup=yes
 ExecStart=/home/pi/DronemakerClonev3/pi-kiosk/kiosk-start.sh
 Restart=always
 RestartSec=3
