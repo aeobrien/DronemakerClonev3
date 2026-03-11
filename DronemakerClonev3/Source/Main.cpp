@@ -45,6 +45,7 @@ public:
             {
                 // Kiosk mode: no title bar, fullscreen, no decorations
                 setUsingNativeTitleBar (false);
+                setTitleBarHeight (0);
                 setResizable (false, false);
                 auto displayArea = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay()->userArea;
                 setBounds (displayArea);
