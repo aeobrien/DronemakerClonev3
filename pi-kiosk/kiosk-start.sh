@@ -4,7 +4,7 @@
 
 set -e
 
-APP_PATH="/home/pi/DronemakerClonev3/build/DronemakerClonev3_artefacts/DronemakerClonev3"
+APP_PATH="/home/pi/DronemakerClonev3/build/DronemakerClonev3_artefacts/DronemakerClone"
 
 # Check for desktop-mode skip file
 if [ -f /boot/firmware/desktop-mode ] || [ -f /boot/desktop-mode ]; then
