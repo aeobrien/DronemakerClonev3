@@ -834,8 +834,8 @@ void MainComponent::updateEffectParameterKnobs()
                          [fx](float v) { fx->setPitch (v); }, " st");
                 addKnob ("Density", 0.1, 4, 0.1, fx->getDensity(),
                          [fx](float v) { fx->setDensity (v); });
-                addKnob ("Spread", 0, 1, 0.01, fx->getSpread(),
-                         [fx](float v) { fx->setSpread (v); });
+                addKnob ("Feedback", 0, 0.95, 0.01, fx->getFeedback(),
+                         [fx](float v) { fx->setFeedback (v); });
                 addKnob ("Dry/Wet", 0, 1, 0.01, fx->getDryWet(),
                          [fx](float v) { fx->setDryWet (v); });
             }
@@ -866,6 +866,27 @@ void MainComponent::updateEffectParameterKnobs()
                          [fx](float v) { fx->setTone (v); });
                 addKnob ("Dry/Wet", 0, 1, 0.01, fx->getDryWet(),
                          [fx](float v) { fx->setDryWet (v); });
+                addKnob ("Asymmetry", -1, 1, 0.01, fx->getAsymmetry(),
+                         [fx](float v) { fx->setAsymmetry (v); });
+                {
+                    // Pre-HP: log-scaled 0-1 normalized, mapped to 20-5000 Hz
+                    const double hpMin = 20.0, hpMax = 5000.0;
+                    double currentHP = fx->getPreHighPass();
+                    double hpNorm = (std::log (currentHP) - std::log (hpMin)) / (std::log (hpMax) - std::log (hpMin));
+                    hpNorm = juce::jlimit (0.0, 1.0, hpNorm);
+                    addKnob ("Pre HP", 0, 1, 0.005, hpNorm,
+                             [fx](float v) {
+                                 float hz = 20.0f * std::pow (5000.0f / 20.0f, v);
+                                 fx->setPreHighPass (hz);
+                             });
+                    paramKnobs[numActiveKnobs - 1].textFromValueFunction = [](double v) {
+                        float hz = 20.0f * std::pow (5000.0f / 20.0f, (float) v);
+                        int freq = (int) hz;
+                        if (freq >= 1000) return juce::String (freq / 1000.0f, 1) + "k";
+                        return juce::String (freq) + " Hz";
+                    };
+                    paramKnobs[numActiveKnobs - 1].updateText();
+                }
                 if (fx->getAlgorithm() == DistortionEffect::Bitcrush)
                 {
                     addKnob ("Bits", 1, 16, 0.5, fx->getBitDepth(),

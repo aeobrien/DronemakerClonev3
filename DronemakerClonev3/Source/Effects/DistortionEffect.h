@@ -31,6 +31,8 @@ public:
     void setDryWet (float dw) { dryWetSmooth.setTargetValue (juce::jlimit (0.0f, 1.0f, dw)); }
     void setBitDepth (float bits) { bitDepthSmooth.setTargetValue (juce::jlimit (1.0f, 16.0f, bits)); }
     void setSampleRateReduction (float factor) { srReductionSmooth.setTargetValue (juce::jlimit (1.0f, 64.0f, factor)); }
+    void setAsymmetry (float a) { asymmetrySmooth.setTargetValue (juce::jlimit (-1.0f, 1.0f, a)); }
+    void setPreHighPass (float hz) { preHPSmooth.setTargetValue (juce::jlimit (20.0f, 5000.0f, hz)); }
 
     int getAlgorithm() const { return algorithm; }
     float getDrive() const { return driveSmooth.getTargetValue(); }
@@ -38,6 +40,8 @@ public:
     float getDryWet() const { return dryWetSmooth.getTargetValue(); }
     float getBitDepth() const { return bitDepthSmooth.getTargetValue(); }
     float getSampleRateReduction() const { return srReductionSmooth.getTargetValue(); }
+    float getAsymmetry() const { return asymmetrySmooth.getTargetValue(); }
+    float getPreHighPass() const { return preHPSmooth.getTargetValue(); }
 
 private:
     int algorithm = 0;
@@ -48,6 +52,12 @@ private:
     SmoothedParam dryWetSmooth { 0.0f };
     SmoothedParam bitDepthSmooth { 8.0f };
     SmoothedParam srReductionSmooth { 1.0f };
+    SmoothedParam asymmetrySmooth { 0.0f };  // -1 to +1: negative = less positive drive, positive = less negative drive
+    SmoothedParam preHPSmooth { 20.0f };     // Pre-distortion highpass frequency
+
+    // Pre-distortion highpass filter state
+    float preHPStateL = 0.0f;
+    float preHPStateR = 0.0f;
 
     // For bitcrush
     int srCounter = 0;

@@ -25,6 +25,9 @@ void GranularEffect::reset()
 
     for (auto& grain : grains)
         grain.active = false;
+
+    dampStateL = 0.0f;
+    dampStateR = 0.0f;
 }
 
 void GranularEffect::updatePitchRatio()
@@ -110,10 +113,9 @@ void GranularEffect::processSample (float& left, float& right)
     float dryL = left;
     float dryR = right;
 
-    // Write to buffer
+    // Write to buffer (feedback is added after grain processing below)
     bufferL[writePos] = left;
     bufferR[writePos] = right;
-    writePos = (writePos + 1) % bufferSize;
 
     // Spawn new grains based on density
     // Use average grain size for spawn interval calculation
@@ -167,6 +169,32 @@ void GranularEffect::processSample (float& left, float& right)
         wetL *= norm;
         wetR *= norm;
     }
+
+    // Feed grain output back into the buffer (creates reverb-like washes)
+    if (feedback > 0.001f)
+    {
+        float fbL = wetL * feedback;
+        float fbR = wetR * feedback;
+
+        // Apply damping (one-pole LP on feedback — darkens each generation)
+        // If damping not set explicitly, auto-damp proportionally to feedback
+        float effectiveDamping = damping > 0.001f ? damping : feedback * 0.5f;
+        if (effectiveDamping > 0.001f)
+        {
+            float dampFreq = 20000.0f * (1.0f - effectiveDamping * 0.95f);  // 20kHz down to 1kHz
+            float dampCoeff = 1.0f - std::exp (-2.0f * juce::MathConstants<float>::pi * dampFreq / static_cast<float> (sampleRate));
+            dampStateL += dampCoeff * (fbL - dampStateL);
+            dampStateR += dampCoeff * (fbR - dampStateR);
+            fbL = dampStateL;
+            fbR = dampStateR;
+        }
+
+        bufferL[writePos] += fbL;
+        bufferR[writePos] += fbR;
+    }
+
+    // Advance write position
+    writePos = (writePos + 1) % bufferSize;
 
     // Dry/wet mix
     left = dryL * (1.0f - dryWet) + wetL * dryWet;

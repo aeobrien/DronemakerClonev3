@@ -31,6 +31,8 @@ public:
     void setDensity (float d) { density = juce::jlimit (0.1f, 4.0f, d); }
     void setSpread (float s) { spread = juce::jlimit (0.0f, 1.0f, s); }
     void setDryWet (float dw) { dryWet = juce::jlimit (0.0f, 1.0f, dw); }
+    void setFeedback (float fb) { feedback = juce::jlimit (0.0f, 0.95f, fb); }
+    void setDamping (float d) { damping = juce::jlimit (0.0f, 1.0f, d); }
 
     float getGrainSizeMin() const { return grainSizeMinMs; }
     float getGrainSizeMax() const { return grainSizeMaxMs; }
@@ -40,6 +42,8 @@ public:
     float getDensity() const { return density; }
     float getSpread() const { return spread; }
     float getDryWet() const { return dryWet; }
+    float getFeedback() const { return feedback; }
+    float getDamping() const { return damping; }
 
 private:
     static constexpr int maxGrains = 8;
@@ -73,6 +77,12 @@ private:
     float density = 1.0f;
     float spread = 0.5f;
     float dryWet = 0.0f;  // Fully dry by default
+    float feedback = 0.0f;   // Grain output fed back into buffer (0 = no feedback, 0.95 = max)
+    float damping = 0.0f;    // HF damping on feedback path (0 = bright, 1 = dark)
+
+    // Damping filter state (one-pole LP on feedback)
+    float dampStateL = 0.0f;
+    float dampStateR = 0.0f;
 
     juce::Random random;
 
