@@ -23,9 +23,14 @@ MainComponent::MainComponent()
     // Searches for Scarlett, USB, or any non-default device
     #if JUCE_LINUX
     {
-        auto* currentType = deviceManager.getCurrentAudioDeviceType();
+        auto typeName = deviceManager.getCurrentAudioDeviceType();
+        auto* currentType = deviceManager.getAvailableDeviceTypes().size() > 0
+            ? deviceManager.getAvailableDeviceTypes()[0] : nullptr;
+        for (auto* dt : deviceManager.getAvailableDeviceTypes())
+            if (dt->getTypeName() == typeName) { currentType = dt; break; }
         if (currentType != nullptr)
         {
+            currentType->scanForDevices();
             auto deviceNames = currentType->getDeviceNames();
             juce::String bestDevice;
             for (const auto& name : deviceNames)
