@@ -1,10 +1,10 @@
 #!/bin/bash
 # Update DronemakerClone on the Pi
-# Run via SSH: ssh aidan@dronemaker.local '~/Dev/DronemakerClonev3/pi-kiosk/update.sh'
+# Run via SSH: ssh pi@pi.local '~/DronemakerClonev3/pi-kiosk/update.sh'
 
 set -e
 
-PROJECT_DIR="/home/aidan/Dev/DronemakerClonev3"
+PROJECT_DIR="/home/pi/DronemakerClonev3"
 SERVICE_NAME="dronemaker"
 
 echo "=== Stopping $SERVICE_NAME ==="

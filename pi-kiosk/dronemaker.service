@@ -5,9 +5,9 @@ Wants=sound.target
 
 [Service]
 Type=simple
-User=aidan
-Environment=HOME=/home/aidan
-ExecStart=/home/aidan/Dev/DronemakerClonev3/pi-kiosk/kiosk-start.sh
+User=pi
+Environment=HOME=/home/pi
+ExecStart=/home/pi/DronemakerClonev3/pi-kiosk/kiosk-start.sh
 Restart=always
 RestartSec=3
 StandardOutput=journal

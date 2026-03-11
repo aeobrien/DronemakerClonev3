@@ -4,7 +4,7 @@
 
 - Raspberry Pi 5 with Pi OS (64-bit) installed
 - SSH access working
-- DronemakerClonev3 cloned and building successfully in `~/Dev/DronemakerClonev3/`
+- DronemakerClonev3 cloned and building successfully in `~/DronemakerClonev3/`
 - JUCE installed at `~/JUCE`
 - Scarlett Solo (or other USB audio) connected
 - Touchscreen connected and working
@@ -15,11 +15,11 @@ SSH into the Pi and run:
 
 ```bash
 # Make scripts executable
-chmod +x ~/Dev/DronemakerClonev3/pi-kiosk/kiosk-start.sh
-chmod +x ~/Dev/DronemakerClonev3/pi-kiosk/update.sh
+chmod +x ~/DronemakerClonev3/pi-kiosk/kiosk-start.sh
+chmod +x ~/DronemakerClonev3/pi-kiosk/update.sh
 
 # Install the systemd service
-sudo cp ~/Dev/DronemakerClonev3/pi-kiosk/dronemaker.service /etc/systemd/system/
+sudo cp ~/DronemakerClonev3/pi-kiosk/dronemaker.service /etc/systemd/system/
 sudo systemctl daemon-reload
 
 # Enable it (starts on boot)
@@ -61,15 +61,15 @@ sudo reboot
 From your Mac (or any machine with SSH access):
 
 ```bash
-ssh aidan@dronemaker.local '~/Dev/DronemakerClonev3/pi-kiosk/update.sh'
+ssh pi@pi.local '~/DronemakerClonev3/pi-kiosk/update.sh'
 ```
 
 Or manually:
 
 ```bash
-ssh aidan@dronemaker.local
+ssh pi@pi.local
 sudo systemctl stop dronemaker
-cd ~/Dev/DronemakerClonev3
+cd ~/DronemakerClonev3
 git pull
 cmake --build build/ -j4
 sudo systemctl start dronemaker
@@ -78,8 +78,8 @@ sudo systemctl start dronemaker
 Or just rebuild and reboot:
 
 ```bash
-ssh aidan@dronemaker.local
-cd ~/Dev/DronemakerClonev3
+ssh pi@pi.local
+cd ~/DronemakerClonev3
 git pull
 cmake --build build/ -j4
 sudo reboot
@@ -117,7 +117,7 @@ sudo systemctl set-default graphical.target
 
 ### Black screen on boot
 - SSH in and check logs: `journalctl -u dronemaker -n 50`
-- Check if the binary exists: `ls -la ~/Dev/DronemakerClonev3/build/DronemakerClonev3_artefacts/DronemakerClonev3`
+- Check if the binary exists: `ls -la ~/DronemakerClonev3/build/DronemakerClonev3_artefacts/DronemakerClonev3`
 - Try running manually: `sudo systemctl stop dronemaker && DISPLAY=:0 ~/Dev/.../DronemakerClonev3 --pi-layout`
 
 ### No audio
