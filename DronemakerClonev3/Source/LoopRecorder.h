@@ -36,7 +36,27 @@ public:
     // Get mixed output of all active loops (call once per sample)
     float getLoopMix();
 
+    // Split output: droneSend (immediate) and dryOutput (delayed by droneOffset)
+    struct LoopMixOutput
+    {
+        float droneSend = 0.0f;   // Processed audio for drone input (immediate, mono)
+        float dryOutputL = 0.0f;  // Delayed/bounced audio for direct output (left)
+        float dryOutputR = 0.0f;  // Delayed/bounced audio for direct output (right)
+    };
+    LoopMixOutput getLoopMixSplit();
+
+    // Global drone offset (seconds of delay between drone input and dry output)
+    void setDroneOffset (float seconds) { droneOffsetSeconds = juce::jlimit (0.5f, 8.0f, seconds); }
+    float getDroneOffset() const { return droneOffsetSeconds; }
+
+    // Get drone send from recording slot (fed during recording so drone warms up)
+    float getRecordingDroneSend() const { return recordingDroneSend; }
+
     // Per-slot parameter setters
+    void setSlotWetSend (int slot, float level);
+    void setSlotDrySend (int slot, float level);
+    float getSlotWetSend (int slot) const;
+    float getSlotDrySend (int slot) const;
     void setSlotVolume (int slot, float vol);
     void setSlotHighPass (int slot, float freqHz);
     void setSlotLowPass (int slot, float freqHz);
@@ -84,6 +104,15 @@ public:
     float getSlotAutomationRangeMin (int slot) const;
     float getSlotAutomationRangeMax (int slot) const;
 
+    // Bounce-in-place
+    bool isSlotBounced (int slot) const;
+    bool isSlotBouncing (int slot) const;
+    void setSlotBounceResult (int slot, std::vector<float>&& left, std::vector<float>&& right, int length);
+    void unbounceSlot (int slot);
+    void setSlotBouncing (int slot);
+    void clearSlotBounceState (int slot);
+    void startBounceTransition (int slot, double currentPlayPos);
+
     // Per-slot parameter getters (for UI indicators)
     float getSlotVolume (int slot) const;
     float getSlotHighPass (int slot) const;
@@ -127,6 +156,29 @@ private:
         float hpState = 0.0f;
         float lpState = 0.0f;
 
+        // Wet/dry send levels
+        float wetSend = 1.0f;            // How much processed audio goes to drone (0-1)
+        float drySend = 1.0f;            // How much delayed processed audio goes to output (0-1)
+
+        // History ring buffer for delayed dry playback
+        std::vector<float> historyBuffer;
+        int historyWritePos = 0;
+        int historyBufferSize = 0;
+        bool historyPrimed = false;       // True once buffer has filled to offset length
+        int historySamplesFed = 0;        // Samples written since recording started (for priming)
+
+        // Bounce-in-place state
+        enum class BounceState { None, Bouncing, Bounced };
+        std::atomic<int> bounceState { 0 };  // cast to/from BounceState
+        std::vector<float> bouncedL;         // Left channel of bounced drone output
+        std::vector<float> bouncedR;         // Right channel
+        int bouncedLength = 0;               // Length in samples
+        double bounceHeadA = 0.0;            // Playback position for voice A
+        double bounceHeadB = 0.0;            // Playback position for voice B
+        float wetFadeGain = 1.0f;            // Fading out wet send during transition
+        float bounceFadeGain = 0.0f;         // Fading in bounced audio during transition
+        bool transitioning = false;
+
         // Automation
         float lastFilteredSample = 0.0f; // Post-filter output for visualiser
         LoopSettings settings;              // Per-loop recording settings
@@ -141,6 +193,8 @@ private:
     int activeRecordSlot = -1;    // Which slot is currently recording (-1 = none)
     int maxLoopSamples = 0;       // Calculated from sample rate
     double currentSampleRate = 44100.0;
+    float droneOffsetSeconds = 4.0f;  // Global delay between drone input and dry output
+    float recordingDroneSend = 0.0f;  // Drone send from currently recording slot
 
     // Helper to get sample with linear interpolation
     float getInterpolatedSample (const LoopSlot& slot, double position) const;

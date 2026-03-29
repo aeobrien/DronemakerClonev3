@@ -10,6 +10,7 @@
 #include "Modulation/ModulationPanel.h"
 #include "PiLayout.h"
 #include "VirtualEncoderBank.h"
+#include "LoopBouncer.h"
 
 //==============================================================================
 // Minimal, instrument-like look & feel (appearance only)
@@ -670,6 +671,12 @@ private:
     int piModTargetSlot = 0;            // 0-2: which of the 3 target slots
     int piModParentIndex = 0;           // 0=None, 1-8=Loop1-8, 9-14=effects, 15=Master
     int piModChildIndex = 0;            // child param within parent
+
+    // ===== BOUNCE-IN-PLACE =====
+    LoopBouncer loopBouncer;
+    void startBounce (int slot);
+    void cancelBounce();
+    void onBounceComplete (int slot, std::vector<float>&& left, std::vector<float>&& right, int length);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };

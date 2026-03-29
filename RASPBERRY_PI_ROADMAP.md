@@ -4,118 +4,91 @@
 - Raspberry Pi 5
 - Waveshare 7" capacitive touchscreen (1024x600)
 - Focusrite Scarlett Solo (USB audio interface)
-- USB MIDI controller (generic, for mapping to controls)
+- USB MIDI controller (AKAI MIDI Mix)
 
 ---
 
-## Phase 1A — CMake Build System Migration (on Mac)
+## Phase 1A — CMake Build System Migration (on Mac) ✓
 
 **Goal:** Replace Projucer-based build with CMake. Verify identical app on macOS.
 
-- [ ] 1A.1 — Create top-level `CMakeLists.txt` using `juce_add_gui_app`
-- [ ] 1A.2 — Build on macOS with CMake, verify it launches and works identically
-- [ ] 1A.3 — Keep `.jucer` file in repo as reference (don't delete it)
-
-**Done when:** `cmake --build` produces a working macOS app matching current behaviour.
+- [x] 1A.1 — Create top-level `CMakeLists.txt` using `juce_add_gui_app`
+- [x] 1A.2 — Build on macOS with CMake, verify it launches and works identically
+- [x] 1A.3 — Keep `.jucer` file in repo as reference (don't delete it)
 
 ---
 
-## Phase 1B — Raspberry Pi OS Setup (you, in parallel)
+## Phase 1B — Raspberry Pi OS Setup ✓
 
 **Goal:** Get the Pi 5 booted with an OS and the touchscreen working.
 
-- [ ] 1B.1 — Flash Raspberry Pi OS (64-bit, Desktop edition) to SD card
-  - Use Raspberry Pi Imager from your Mac
-  - Choose "Raspberry Pi OS (64-bit)" — the full desktop version
-  - Set hostname, enable SSH, set username/password during imaging
-- [ ] 1B.2 — Boot the Pi, connect to your network (ethernet or wifi)
-- [ ] 1B.3 — Connect the Waveshare 7" touchscreen
-  - Typically connects via DSI ribbon cable or HDMI + USB touch
-  - May need config.txt edits depending on model — check Waveshare wiki for your exact model
-- [ ] 1B.4 — Verify touch input works (open a browser, tap around)
-- [ ] 1B.5 — Plug in Scarlett Solo, verify it appears: `aplay -l`
-- [ ] 1B.6 — Plug in MIDI controller, verify it appears: `amidi -l`
-- [ ] 1B.7 — Install build dependencies:
-  ```bash
-  sudo apt update && sudo apt upgrade -y
-  sudo apt install -y build-essential cmake git \
-    libasound2-dev libfreetype6-dev libx11-dev \
-    libxrandr-dev libxinerama-dev libxcursor-dev \
-    libgl1-mesa-dev libcurl4-openssl-dev \
-    libwebkit2gtk-4.0-dev pkg-config
-  ```
-- [ ] 1B.8 — Clone JUCE onto the Pi:
-  ```bash
-  cd ~
-  git clone https://github.com/juce-framework/JUCE.git
-  cd JUCE && git checkout 8.0.4  # or whichever version matches your Mac
-  ```
-
-**Done when:** Pi boots to desktop, touchscreen works, Scarlett and MIDI show up, build tools installed.
+- [x] 1B.1 — Flash Raspberry Pi OS (64-bit) to SD card
+- [x] 1B.2 — Boot the Pi, connect to network
+- [x] 1B.3 — Connect the Waveshare 7" touchscreen
+- [x] 1B.4 — Verify touch input works
+- [x] 1B.5 — Plug in Scarlett Solo, verify it appears: `aplay -l`
+- [x] 1B.6 — Plug in MIDI controller, verify it appears: `amidi -l`
+- [x] 1B.7 — Install build dependencies
+- [x] 1B.8 — Clone JUCE 8.0.12 onto the Pi
 
 ---
 
-## Phase 2 — Build on the Raspberry Pi
+## Phase 2 — Build on the Raspberry Pi ✓
 
 **Goal:** Get DronemakerClone compiling and launching on the Pi.
 
-- [ ] 2.1 — Clone this repo onto the Pi (or push from Mac via SSH/git)
-- [ ] 2.2 — Point CMake at the Pi's JUCE installation and build
-- [ ] 2.3 — Launch the app — expect it to open a window on the desktop
-- [ ] 2.4 — Configure audio: select Scarlett Solo as input/output via Settings dialog
-- [ ] 2.5 — Test basic audio passthrough and drone processing
-- [ ] 2.6 — Fix any Linux-specific build or runtime issues
+- [x] 2.1 — Clone repo onto the Pi
+- [x] 2.2 — Build with CMake (Pi JUCE path auto-detected)
+- [x] 2.3 — Launch the app on the desktop
+- [x] 2.4 — Auto-select Scarlett Solo on startup (USB audio auto-detection)
+- [x] 2.5 — Test basic audio passthrough and drone processing
+- [x] 2.6 — Fix Linux-specific build issues (GCC warnings, API differences)
 
-**Done when:** App runs on Pi, processes audio through the Scarlett, UI is visible on touchscreen.
+**Fixes applied:**
+- JUCE LevelMeter null channel crash (patched `~/JUCE` on Pi)
+- `getCurrentAudioDeviceType()` returns String, not pointer (GCC caught this)
+- Unused variable and shadowed variable warnings (GCC stricter than Clang)
 
 ---
 
-## Phase 3 — Touchscreen UI Adaptation
+## Phase 3 — Touchscreen UI Adaptation ✓
 
 **Goal:** Make the UI usable on a 1024x600 touch-only display.
 
-- [ ] 3.1 — Set initial window size to 1024x600, test current layout
-- [ ] 3.2 — Identify controls that are too small for finger interaction
-  - Minimum touch target: ~44x44 px (Apple HIG guideline)
-  - Rotary knobs, buttons, combo boxes all need checking
-- [ ] 3.3 — Adjust layout for 1024x600 (likely needs reorganisation)
-  - May need scrollable panels or more tabs
-  - Progress bars and waveform displays need resizing
-- [ ] 3.4 — Remove/adapt hover-dependent interactions (no hover on touchscreen)
-- [ ] 3.5 — Remove dialog windows that assume mouse (Settings, waveform popup)
-  - Replace with inline panels or fullscreen overlays
-- [ ] 3.6 — Test all interactions via touch only — no mouse, no keyboard
-- [ ] 3.7 — Add on-screen controls for anything currently keyboard-only
-
-**Done when:** Every feature is accessible and usable via touch alone at 1024x600.
+- [x] 3.1 — Dual layout system: `usePiLayout` flag, auto-true on Linux
+- [x] 3.2 — Pi layout: `PiLayout.h/cpp` with touch-friendly controls
+- [x] 3.3 — Touch loop buttons: short tap = select, long press = toggle record/play/stop
+- [x] 3.4 — Replaced combo boxes with direct-select buttons (combos hang on X11/touch)
+- [x] 3.5 — Unified knob row (8 rotary knobs, shared between loop and effect modes)
+- [x] 3.6 — Detail strip: oscilloscope + waveform overview with trim markers + playhead
+- [x] 3.7 — Warm coral/amber color scheme (PiColours namespace)
 
 ---
 
-## Phase 4 — MIDI Controller Integration on Pi
+## Phase 4 — MIDI Controller Integration on Pi ✓
 
 **Goal:** Verify MIDI learn/mapping works on the Pi.
 
-- [ ] 4.1 — Verify MIDI input is received (check with `aseqdump`)
-- [ ] 4.2 — Test MIDI Learn mode with your controller
-- [ ] 4.3 — Fix any Linux MIDI issues (ALSA vs JUCE MIDI device enumeration)
-- [ ] 4.4 — Test saving/loading MIDI mappings (persistence across restarts)
-
-**Done when:** MIDI controller can map to and control all parameters.
+- [x] 4.1 — MIDI input working (auto-scans every ~2s)
+- [x] 4.2 — MIDI Learn mode works with AKAI MIDI Mix
+- [x] 4.3 — Virtual encoder bank for relative MIDI control
+- [x] 4.4 — MIDI-mapped loop buttons always trigger toggle (same as long press)
 
 ---
 
-## Phase 5 — Kiosk / Embedded Mode
+## Phase 5 — Kiosk / Embedded Mode ✓
 
 **Goal:** App launches automatically on boot, fullscreen, no desktop environment visible.
 
-- [ ] 5.1 — Make app launch fullscreen (no title bar, no window decorations)
-- [ ] 5.2 — Create a systemd service to auto-launch the app on boot
-- [ ] 5.3 — Disable screen blanking / power management
-- [ ] 5.4 — Auto-select the Scarlett Solo on startup (no manual Settings needed)
-- [ ] 5.5 — Test cold boot → app ready workflow
-- [ ] 5.6 — Optional: strip down to minimal OS (remove desktop environment entirely)
+- [x] 5.1 — Fullscreen with no title bar or window decorations (`--kiosk` flag)
+- [x] 5.2 — Auto-launch on boot via `.bash_profile` + `xinit` (not systemd — see notes)
+- [x] 5.3 — Auto-select Scarlett Solo on startup (no manual Settings needed)
+- [x] 5.4 — Cold boot → app ready workflow tested and working
+- [x] 5.5 — Desktop-mode skip file (`/boot/firmware/desktop-mode`) for maintenance
+- [ ] 5.6 — Disable screen blanking / power management
+- [ ] 5.7 — Settings window trap: need a way to close it in kiosk mode
 
-**Done when:** Power on the Pi → app appears fullscreen on touchscreen → ready to use.
+**Notes:** systemd service approach was attempted but had issues with TTY ownership and SIGHUP killing xinit. The `.bash_profile` approach on tty1 auto-login is simpler and reliable. See `pi-kiosk/SETUP.md` for full instructions.
 
 ---
 
@@ -136,6 +109,7 @@
 
 ## Notes
 
-- The iOS/macOS standalone build is NOT affected by any of this work. The CMake migration builds the same source code with a different build system. Platform-specific UI tweaks will be `#if JUCE_LINUX` guarded where needed.
-- JUCE version on Mac and Pi must match. Check your Mac's JUCE version before cloning on the Pi.
+- The macOS standalone build is NOT affected by Pi work. Platform-specific UI is behind `usePiLayout` flag (auto-detected or CLI override: `--pi-layout` / `--desktop-layout`).
+- JUCE version on Mac and Pi must match (currently 8.0.12).
 - The Scarlett Solo is USB class-compliant, so no drivers needed on Linux.
+- Binary name is `DronemakerClone` (not `DronemakerClonev3`). Located at `build/DronemakerClonev3_artefacts/DronemakerClone`.

@@ -50,6 +50,7 @@ target_sources(DronemakerClonev3 PRIVATE
     ${SOURCE_DIR}/PiLayout.h
     ${SOURCE_DIR}/PiLayout.cpp
     ${SOURCE_DIR}/VirtualEncoderBank.h
+    ${SOURCE_DIR}/LoopBouncer.h
 
     # Effects
     ${SOURCE_DIR}/Effects/EffectBase.h

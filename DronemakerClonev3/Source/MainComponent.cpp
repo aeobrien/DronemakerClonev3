@@ -1675,7 +1675,14 @@ void MainComponent::audioDeviceIOCallbackWithContext (const float* const* inputC
                     loopRecorder.recordSample (liveSample);
             }
 
-            float loopSample = hasLoops ? loopRecorder.getLoopMix() : 0.0f;
+            // Split loop output: droneSend (immediate) and dryOutput (delayed)
+            auto loopOut = hasLoops ? loopRecorder.getLoopMixSplit() : LoopRecorder::LoopMixOutput{};
+
+            // During recording, the recording slot also feeds the drone
+            float recDroneSend = isRecording ? loopRecorder.getRecordingDroneSend() : 0.0f;
+
+            // Total drone send = playback loops + recording feed
+            float totalDroneSend = loopOut.droneSend + recDroneSend;
 
             // Feed spectrum visualiser on Pi — per-loop (post filter) or master output
             if (usePiLayout && piLoopDetail)
@@ -1688,8 +1695,8 @@ void MainComponent::audioDeviceIOCallbackWithContext (const float* const* inputC
                 // else: we'll push master output after processing below
             }
 
-            // Crossfade between live and loops based on mix
-            fftInput = liveSample * (1.0f - currentMix) + loopSample * currentMix;
+            // Crossfade between live and loops based on mix — drone send goes to FFT
+            fftInput = liveSample * (1.0f - currentMix) + totalDroneSend * currentMix;
 
             float outL, outR;
             if (width < 0.01f)
@@ -1705,6 +1712,10 @@ void MainComponent::audioDeviceIOCallbackWithContext (const float* const* inputC
                 outL = mid + (processedL - mid) * width;
                 outR = mid + (processedR - mid) * width;
             }
+
+            // Sum delayed/bounced dry loop output into the drone output before effects
+            outL += loopOut.dryOutputL;
+            outR += loopOut.dryOutputR;
 
             effectsChain.processSample (outL, outR);
 
@@ -1862,6 +1873,9 @@ void MainComponent::timerCallback()
             ind.lpModulated = lpModulated;
             ind.hasAutomation = hasLevelAutomation;
             ind.automationLevel = loopRecorder.getSlotAutomationLevel (i);
+            ind.bouncing = loopRecorder.isSlotBouncing (i);
+            ind.bounceProgress = (loopBouncer.activeSlot.load() == i) ? loopBouncer.progress.load() : 0.0f;
+            ind.bounced = loopRecorder.isSlotBounced (i);
 
             if (piLoopButtons[i])
                 piLoopButtons[i]->indicatorData = ind;
@@ -2313,6 +2327,61 @@ void MainComponent::piSelectLoop (int slot)
         if (btn) btn->repaint();
 }
 
+void MainComponent::startBounce (int slot)
+{
+    if (slot < 0 || slot >= 8) return;
+    if (! loopRecorder.isSlotActive (slot)) return;
+    if (loopRecorder.isSlotBouncing (slot) || loopRecorder.isSlotBounced (slot)) return;
+
+    // Mark as bouncing
+    loopRecorder.setSlotBouncing (slot);
+
+    // Snapshot drone parameters from the live FFT processor
+    auto snapshot = DroneParameterSnapshot::fromProcessor (fftProcessorL);
+
+    // Copy the loop buffer
+    int length = loopRecorder.getSlotLength (slot);
+    std::vector<float> buffer (length);
+    for (int i = 0; i < length; ++i)
+        buffer[i] = loopRecorder.getSampleAtIndex (slot, i);
+
+    float trimStart = loopRecorder.getSlotTrimStart (slot);
+    float trimEnd = loopRecorder.getSlotTrimEnd (slot);
+
+    // Get pitch octave from combo (need to read the current setting)
+    int pitchOctave = loopPitchCombos[slot].getSelectedId() - 3;  // ID 1-5 maps to -2 to +2
+
+    loopBouncer.startBounce (slot, std::move (buffer), length, trimStart, trimEnd, pitchOctave, snapshot,
+        [this] (int s, std::vector<float>&& l, std::vector<float>&& r, int len) {
+            onBounceComplete (s, std::move (l), std::move (r), len);
+        });
+}
+
+void MainComponent::cancelBounce()
+{
+    int slot = loopBouncer.activeSlot.load();
+    loopBouncer.signalThreadShouldExit();
+    loopBouncer.waitForThreadToExit (3000);
+    if (slot >= 0 && slot < 8)
+        loopRecorder.clearSlotBounceState (slot);
+}
+
+void MainComponent::onBounceComplete (int slot, std::vector<float>&& left, std::vector<float>&& right, int length)
+{
+    std::cerr << "[Bounce] onBounceComplete: slot=" << slot << " length=" << length
+              << " leftSize=" << left.size() << " rightSize=" << right.size() << std::endl;
+
+    // Store the result
+    loopRecorder.setSlotBounceResult (slot, std::move (left), std::move (right), length);
+
+    // Start the transition (align bounce heads with current playback position)
+    double currentPos = loopRecorder.getSlotProgress (slot)
+                        * loopRecorder.getSlotEffectiveLength (slot);
+
+    std::cerr << "[Bounce] Starting transition: currentPos=" << currentPos << std::endl;
+    loopRecorder.startBounceTransition (slot, currentPos);
+}
+
 void MainComponent::piSelectEffect (int slot)
 {
     // Enter effect mode — deselect loops, return to loops view
@@ -2468,6 +2537,40 @@ void MainComponent::updateDroneParameterKnobs()
         addToggleAsKnob ("Phase", phaseToggle);
         addKnob ("Live/Loop", loopMixKnob);
         addKnob ("Volume", masterVolumeKnob);
+
+        // Knob 7: Drone offset (delay between drone input and dry loop output)
+        {
+            if (numActiveKnobs < maxParamKnobs)
+            {
+                int knobIndex = numActiveKnobs;
+                auto& knob = paramKnobs[knobIndex];
+                auto& label = paramLabels[knobIndex];
+
+                knob.setRange (0.5, 8.0, 0.1);
+                knob.setValue (loopRecorder.getDroneOffset(), juce::dontSendNotification);
+                knob.setTextValueSuffix (" s");
+                knob.onValueChange = [this, knobIndex] {
+                    loopRecorder.setDroneOffset ((float) paramKnobs[knobIndex].getValue());
+                };
+                knob.setVisible (true);
+                label.setText ("Offset", juce::dontSendNotification);
+                label.setVisible (true);
+
+                if (knobIndex < VirtualEncoderBank::numEncoders)
+                {
+                    encoderBank.bindEncoder (knobIndex, "Offset", 0.5, 8.0, 0.1,
+                        [this, knobIndex](float v) {
+                            paramKnobs[knobIndex].setValue (v, juce::dontSendNotification);
+                            loopRecorder.setDroneOffset (v);
+                        },
+                        [this, knobIndex]() -> float {
+                            return (float) paramKnobs[knobIndex].getValue();
+                        }, " s");
+                }
+
+                numActiveKnobs++;
+            }
+        }
     }
 
     resized();
@@ -2580,40 +2683,19 @@ void MainComponent::updateLoopParameterKnobs()
                  if (s >= 0) loopRecorder.setSlotTrimEnd (s, v);
              });
 
-    // Knob 4: Automation preset selector
-    {
-        auto settings = loopRecorder.getSlotSettings (slot);
-        int autoKnobIdx = numActiveKnobs;
-        addKnob ("Auto", 0, AutomationPresets::numPresets - 1, 1, settings.presetIndex,
-                 [this](float v) {
-                     int s = TouchLoopButton::selectedSlot;
-                     if (s < 0) return;
-                     int presetIdx = juce::jlimit (0, AutomationPresets::numPresets - 1, (int) v);
-                     auto slotSettings = loopRecorder.getSlotSettings (s);
-                     slotSettings.presetIndex = presetIdx;
-                     slotSettings.postRecordSequence = applyPresetWithTimeScale (presetIdx, slotSettings.timeScale);
-                     loopRecorder.setSlotSettings (s, slotSettings);
-                 });
-        paramKnobs[autoKnobIdx].textFromValueFunction = [](double v) {
-            int idx = juce::jlimit (0, AutomationPresets::numPresets - 1, (int) v);
-            return juce::String (AutomationPresets::presets[idx].name);
-        };
-        paramKnobs[autoKnobIdx].updateText();
-    }
+    // Knob 4: Wet send (how much goes to drone)
+    addKnob ("Wet", 0, 1, 0.01, loopRecorder.getSlotWetSend (slot),
+             [this](float v) {
+                 int s = TouchLoopButton::selectedSlot;
+                 if (s >= 0) loopRecorder.setSlotWetSend (s, v);
+             });
 
-    // Knob 5: Time scale (0.1x to 10.0x)
-    {
-        auto settings = loopRecorder.getSlotSettings (slot);
-        addKnob ("Time", 0.1, 10.0, 0.1, settings.timeScale,
-                 [this](float v) {
-                     int s = TouchLoopButton::selectedSlot;
-                     if (s < 0) return;
-                     auto slotSettings = loopRecorder.getSlotSettings (s);
-                     slotSettings.timeScale = v;
-                     slotSettings.postRecordSequence = applyPresetWithTimeScale (slotSettings.presetIndex, v);
-                     loopRecorder.setSlotSettings (s, slotSettings);
-                 }, "x");
-    }
+    // Knob 5: Dry send (delayed direct output level)
+    addKnob ("Dry", 0, 1, 0.01, loopRecorder.getSlotDrySend (slot),
+             [this](float v) {
+                 int s = TouchLoopButton::selectedSlot;
+                 if (s >= 0) loopRecorder.setSlotDrySend (s, v);
+             });
 
     // Knob 6: High pass (log-scaled: 0-1 normalized, mapped to 20-5000 Hz)
     {
@@ -2679,8 +2761,19 @@ void MainComponent::updateLoopParameterKnobs()
                  }
              });
 
-    // Push button 4: Preview automation on selected loop
+    // Push button 4: Cycle automation preset on selected loop
     encoderBank.bindButton (3, [this] {
+        int s = TouchLoopButton::selectedSlot;
+        if (s < 0) return;
+        auto settings = loopRecorder.getSlotSettings (s);
+        int nextPreset = (settings.presetIndex + 1) % AutomationPresets::numPresets;
+        settings.presetIndex = nextPreset;
+        settings.postRecordSequence = applyPresetWithTimeScale (nextPreset, settings.timeScale);
+        loopRecorder.setSlotSettings (s, settings);
+    });
+
+    // Push button 5: Preview automation on selected loop
+    encoderBank.bindButton (4, [this] {
         int s = TouchLoopButton::selectedSlot;
         if (s < 0) return;
         if (loopRecorder.isPreviewRunning (s))
@@ -2689,14 +2782,24 @@ void MainComponent::updateLoopParameterKnobs()
             loopRecorder.startPreview (s);
     });
 
-    // Push button 5: (reserved for future use)
+    // Push button 8: Bounce / unbounce selected loop
+    encoderBank.bindButton (7, [this] {
+        int s = TouchLoopButton::selectedSlot;
+        if (s < 0) return;
+        if (loopRecorder.isSlotBounced (s))
+            loopRecorder.unbounceSlot (s);
+        else if (loopRecorder.isSlotBouncing (s))
+            cancelBounce();
+        else if (loopRecorder.isSlotActive (s))
+            startBounce (s);
+    });
 
-    // Grey out automation knobs (4 & 5) if this loop's volume is being modulated
+    // Grey out wet/dry knobs if this loop's volume is being modulated
     bool volumeModulated = modulationManager.isTargetModulated (ModulationTarget::Type::LoopVolume, slot);
     if (volumeModulated)
     {
-        paramKnobs[3].setEnabled (false);  // Automation preset
-        paramKnobs[4].setEnabled (false);  // Time scale
+        paramKnobs[3].setEnabled (false);  // Wet send
+        paramKnobs[4].setEnabled (false);  // Dry send
     }
 
     // Repurpose volume knob as automation range modifier when automation is active

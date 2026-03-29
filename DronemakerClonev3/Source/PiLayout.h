@@ -63,6 +63,9 @@ struct LoopIndicatorData
     float automationLevel = 1.0f; // Current automation level multiplier
     bool active = false;          // Has content and is playing
     bool recording = false;       // Currently recording
+    bool bouncing = false;        // Bounce in progress
+    float bounceProgress = 0.0f;  // 0-1 bounce completion
+    bool bounced = false;         // Slot is in bounced mode
 };
 
 //==============================================================================
@@ -152,6 +155,22 @@ public:
             g.drawRoundedRectangle (bounds, corner, 1.0f);
         }
 
+        // Bounce progress ring
+        if (indicatorData.bouncing && indicatorData.bounceProgress > 0.0f)
+        {
+            float arcAngle = indicatorData.bounceProgress * juce::MathConstants<float>::twoPi;
+            float arcRadius = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.5f - 3.0f;
+            juce::Path arc;
+            arc.addCentredArc (bounds.getCentreX(), bounds.getCentreY(),
+                               arcRadius, arcRadius, 0.0f,
+                               -juce::MathConstants<float>::halfPi,
+                               -juce::MathConstants<float>::halfPi + arcAngle,
+                               true);
+            g.setColour (PiColours::accentBright);
+            g.strokePath (arc, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved,
+                                                      juce::PathStrokeType::rounded));
+        }
+
         // Number
         if (recording)
         {
@@ -169,6 +188,17 @@ public:
             g.setFont (PiColours::make (22.0f, true));
             g.setColour (active ? PiColours::amber : PiColours::textDim);
             g.drawText (juce::String (slot + 1), bounds, juce::Justification::centred);
+        }
+
+        // Bounce badge
+        if (indicatorData.bounced)
+        {
+            auto badgeBounds = juce::Rectangle<float> (bounds.getRight() - 16, bounds.getY() + 2, 14, 14);
+            g.setColour (PiColours::accent.withAlpha (0.85f));
+            g.fillRoundedRectangle (badgeBounds, 3.0f);
+            g.setFont (PiColours::make (9.0f, true));
+            g.setColour (PiColours::bg);
+            g.drawText ("B", badgeBounds, juce::Justification::centred);
         }
 
     }

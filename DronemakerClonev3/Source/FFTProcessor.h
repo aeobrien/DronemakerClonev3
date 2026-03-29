@@ -43,6 +43,28 @@ public:
     void setHarmonicScaleType(int type) { harmonicScaleType = juce::jlimit(0, 10, type); }
     void setHarmonicIntensity(float i) { harmonicIntensity = juce::jlimit(0.0f, 1.0f, i); }
 
+    // Parameter getters (for snapshotting drone state)
+    float getSampleRate() const { return sampleRate; }
+    float getInterpFactor() const { return interpFactor; }
+    float getDroneDelay() const { return droneDelay; }
+    float getSmoothingFactor() const { return smoothingFactor; }
+    float getThreshold() const { return threshold; }
+    float getSpectralTilt() const { return spectralTilt; }
+    bool getRandomizePhases() const { return randomizePhases; }
+    bool getUsePeakAmplitudes() const { return usePeakAmplitudes; }
+    float getPitchShiftSemitones() const { return pitchShiftSemitones; }
+    float getPitchShiftOctaves() const { return pitchShiftOctaves; }
+    float getHighPassFreq() const { return highPassFreq; }
+    float getLowPassFreq() const { return lowPassFreq; }
+    float getHighPassSlope() const { return highPassSlope; }
+    float getLowPassSlope() const { return lowPassSlope; }
+    float getDecayRate() const { return decayRate; }
+    float getHistorySeconds() const { return static_cast<float>(activeHistoryFrames) * static_cast<float>(hopSize) / sampleRate; }
+    bool getHarmonicFilterEnabled() const { return harmonicFilterEnabled; }
+    int getHarmonicRootNote() const { return harmonicRootNote; }
+    int getHarmonicScaleType() const { return harmonicScaleType; }
+    float getHarmonicIntensity() const { return harmonicIntensity; }
+
 private:
     void processFrame(bool bypassed);
     void processSpectrum(float* data, int numBins);
