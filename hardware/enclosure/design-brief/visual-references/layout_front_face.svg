@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-140 -15 280 70" width="1120" height="280">
+  <style>
+    text { font-family: 'Helvetica Neue', Arial, sans-serif; }
+    .label { font-size: 3.5px; fill: #333; text-anchor: middle; }
+    .dim { font-size: 3px; fill: #666; text-anchor: middle; }
+    .hole { fill: none; stroke: #333; stroke-width: 0.4; }
+    .knob { fill: none; stroke: #2196F3; stroke-width: 0.3; stroke-dasharray: 1,1; }
+    .panel-outline { fill: #F5F5F5; stroke: #333; stroke-width: 0.8; }
+    .title { font-size: 5px; fill: #333; text-anchor: middle; font-weight: bold; }
+    .subtitle { font-size: 3.5px; fill: #666; text-anchor: middle; }
+    .dim-line { stroke: #999; stroke-width: 0.3; }
+    .component-label { font-size: 2.5px; fill: #2196F3; text-anchor: middle; }
+  </style>
+
+  <text x="0" y="-7" class="title">Front Vertical Face — Layout Guide</text>
+  <text x="0" y="-2" class="subtitle">View from front. 254 mm wide × ~24.7 mm tall. Approximate — see dimensions table for measurements.</text>
+
+  <!-- Panel outline (254 x 24.7mm) -->
+  <rect x="-127" y="2" width="254" height="24.7" class="panel-outline" rx="1"/>
+
+  <!-- Pushbutton holes: 8 × 16mm, 25mm spacing, centred -->
+  <circle cx="-87.5" cy="14.35" r="8" class="hole"/>
+  <circle cx="-62.5" cy="14.35" r="8" class="hole"/>
+  <circle cx="-37.5" cy="14.35" r="8" class="hole"/>
+  <circle cx="-12.5" cy="14.35" r="8" class="hole"/>
+  <circle cx="12.5" cy="14.35" r="8" class="hole"/>
+  <circle cx="37.5" cy="14.35" r="8" class="hole"/>
+  <circle cx="62.5" cy="14.35" r="8" class="hole"/>
+  <circle cx="87.5" cy="14.35" r="8" class="hole"/>
+
+  <!-- Button cap outlines (18.5mm dia) -->
+  <circle cx="-87.5" cy="14.35" r="9.25" class="knob"/>
+  <circle cx="-62.5" cy="14.35" r="9.25" class="knob"/>
+  <circle cx="-37.5" cy="14.35" r="9.25" class="knob"/>
+  <circle cx="-12.5" cy="14.35" r="9.25" class="knob"/>
+  <circle cx="12.5" cy="14.35" r="9.25" class="knob"/>
+  <circle cx="37.5" cy="14.35" r="9.25" class="knob"/>
+  <circle cx="62.5" cy="14.35" r="9.25" class="knob"/>
+  <circle cx="87.5" cy="14.35" r="9.25" class="knob"/>
+
+  <!-- Labels -->
+  <text x="-87.5" y="14.85" class="component-label">B1</text>
+  <text x="-62.5" y="14.85" class="component-label">B2</text>
+  <text x="-37.5" y="14.85" class="component-label">B3</text>
+  <text x="-12.5" y="14.85" class="component-label">B4</text>
+  <text x="12.5" y="14.85" class="component-label">B5</text>
+  <text x="37.5" y="14.85" class="component-label">B6</text>
+  <text x="62.5" y="14.85" class="component-label">B7</text>
+  <text x="87.5" y="14.85" class="component-label">B8</text>
+
+  <!-- Dimensions -->
+  <line x1="-87.5" y1="30" x2="-62.5" y2="30" class="dim-line"/>
+  <text x="-75" y="33" class="dim">25 mm c-to-c</text>
+
+  <text x="0" y="38" class="label">8 × Pushbutton holes: ø16 mm</text>
+  <text x="0" y="42" class="dim">Button caps shown dashed (ø18.5 mm). Centred vertically in face.</text>
+</svg>

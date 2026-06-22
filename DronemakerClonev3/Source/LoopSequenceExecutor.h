@@ -17,6 +17,12 @@ public:
     // Start executing a sequence (copies the sequence for thread safety)
     void startSequence (const Sequence& seq, double sampleRate);
 
+    // Pre-load a sequence (message thread safe) for later activation
+    void preloadSequence (const Sequence& seq) { preloadedSequence = seq; hasPreloaded = true; }
+
+    // Activate a pre-loaded sequence without allocation (audio thread safe)
+    void activatePreloaded (double sampleRate);
+
     // Process one sample, returns current automation level (0.0-1.0)
     float processSample (double sampleRate);
 
@@ -40,6 +46,10 @@ private:
     std::atomic<bool> running { false };
     std::atomic<bool> playbackEnabled { false };
     std::atomic<float> currentLevel { 1.0f };
+
+    // Pre-loaded sequence for allocation-free activation
+    Sequence preloadedSequence;
+    bool hasPreloaded = false;
 
     // Advance to the next command
     void advanceToNextCommand (double sampleRate);

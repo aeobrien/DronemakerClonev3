@@ -61,6 +61,60 @@ void LoopSequenceExecutor::startSequence (const Sequence& seq, double sampleRate
     }
 }
 
+void LoopSequenceExecutor::activatePreloaded (double sampleRate)
+{
+    if (! hasPreloaded)
+        return;
+
+    // Swap preloaded into active (no allocation — both already allocated)
+    std::swap (activeSequence, preloadedSequence);
+    hasPreloaded = false;
+
+    currentCommandIndex = 0;
+    commandProgress = 0.0;
+    commandDuration = 0.0;
+    rampStartLevel = currentLevel.load();
+    playbackEnabled.store (false);
+    currentLevel.store (1.0f);
+    running.store (true);
+
+    // Process initial immediate commands
+    while (currentCommandIndex < (int) activeSequence.commands.size())
+    {
+        const auto& cmd = activeSequence.commands[currentCommandIndex];
+        if (executeImmediateCommand (cmd))
+            currentCommandIndex++;
+        else
+        {
+            beginTimedCommand (cmd, sampleRate);
+            break;
+        }
+    }
+
+    if (currentCommandIndex >= (int) activeSequence.commands.size())
+    {
+        if (activeSequence.loopSequence)
+        {
+            currentCommandIndex = 0;
+            while (currentCommandIndex < (int) activeSequence.commands.size())
+            {
+                const auto& cmd = activeSequence.commands[currentCommandIndex];
+                if (executeImmediateCommand (cmd))
+                    currentCommandIndex++;
+                else
+                {
+                    beginTimedCommand (cmd, sampleRate);
+                    break;
+                }
+            }
+        }
+        else
+        {
+            running.store (false);
+        }
+    }
+}
+
 float LoopSequenceExecutor::processSample (double sampleRate)
 {
     if (!running.load())

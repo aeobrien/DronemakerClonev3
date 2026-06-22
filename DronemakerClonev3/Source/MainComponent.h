@@ -535,6 +535,7 @@ private:
     juce::Slider masterVolumeKnob;
     juce::Label masterVolumeLabel;
     std::atomic<float> masterVolume { 1.0f };
+    juce::SmoothedValue<float> masterVolumeSmooth { 1.0f };
     std::atomic<bool> masterBypass { true };  // Bypass enabled by default
 
     // MIDI mapping
@@ -551,6 +552,7 @@ private:
     std::atomic<bool> midiLearnActive { false };
     MidiMapping midiLearnSelected;  // Currently selected control for learning
     std::atomic<bool> midiLearnHasSelection { false };
+    std::map<int, int> midiLearnFirstCC;  // CC number → first seen value (for change detection)
     void toggleMidiLearnMode();
     void exitMidiLearnMode();
     void selectControlForMidiLearn (juce::Slider* knob);
@@ -561,6 +563,7 @@ private:
     void refreshMidiInputs();
     std::set<juce::String> knownMidiInputIds;
     int midiRescanCounter = 0;
+    int recordPulseCounter = 0;
 
     // Resource monitor
     std::unique_ptr<ResourceMonitor> resourceMonitor;
@@ -645,7 +648,7 @@ private:
     std::array<juce::TextButton, 8> piPushButtons;
 
     // ===== PI LAYOUT =====
-    bool usePiLayout = false;
+    bool usePiLayout = true;
     bool piLoopMode = true;  // true = knobs control loops, false = knobs control effects
     std::array<std::unique_ptr<TouchLoopButton>, 8> piLoopButtons;
     std::unique_ptr<LoopDetailStrip> piLoopDetail;

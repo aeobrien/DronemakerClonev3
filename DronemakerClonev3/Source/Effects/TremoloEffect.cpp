@@ -8,6 +8,8 @@ TremoloEffect::TremoloEffect()
 void TremoloEffect::prepareToPlay (double sr, int /*samplesPerBlock*/)
 {
     sampleRate = sr;
+    rateSmooth.setSmoothingTime (sr, 20.0f);
+    depthSmooth.setSmoothingTime (sr, 10.0f);
     reset();
 }
 
@@ -41,6 +43,9 @@ void TremoloEffect::processSample (float& left, float& right)
 {
     if (! enabled)
         return;
+
+    float rate = rateSmooth.getNextValue();
+    float depth = depthSmooth.getNextValue();
 
     // Get LFO values
     float lfoL = getLfoValue (phase);

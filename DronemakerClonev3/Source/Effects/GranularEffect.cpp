@@ -13,6 +13,9 @@ void GranularEffect::prepareToPlay (double sr, int /*samplesPerBlock*/)
     bufferL.resize (bufferSize, 0.0f);
     bufferR.resize (bufferSize, 0.0f);
 
+    dryWetSmooth.setSmoothingTime (sr, 10.0f);
+    feedbackSmooth.setSmoothingTime (sr, 10.0f);
+
     reset();
 }
 
@@ -169,6 +172,10 @@ void GranularEffect::processSample (float& left, float& right)
         wetL *= norm;
         wetR *= norm;
     }
+
+    // Get smoothed parameter values
+    float feedback = feedbackSmooth.getNextValue();
+    float dryWet = dryWetSmooth.getNextValue();
 
     // Feed grain output back into the buffer (creates reverb-like washes)
     if (feedback > 0.001f)

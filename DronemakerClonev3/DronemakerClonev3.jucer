@@ -21,6 +21,9 @@
       <FILE id="loopautoeditH" name="LoopAutomationEditor.h" compile="0" resource="0" file="Source/LoopAutomationEditor.h"/>
       <FILE id="loopautoeditC" name="LoopAutomationEditor.cpp" compile="1" resource="0"
             file="Source/LoopAutomationEditor.cpp"/>
+      <FILE id="piLayoutH" name="PiLayout.h" compile="0" resource="0" file="Source/PiLayout.h"/>
+      <FILE id="piLayoutC" name="PiLayout.cpp" compile="1" resource="0" file="Source/PiLayout.cpp"/>
+      <FILE id="vEncBankH" name="VirtualEncoderBank.h" compile="0" resource="0" file="Source/VirtualEncoderBank.h"/>
       <GROUP id="{EF5CD0A7-2D6C-D107-A62D-92F5AC48C689}" name="Effects">
         <FILE id="efxBase" name="EffectBase.h" compile="0" resource="0" file="Source/Effects/EffectBase.h"/>
         <FILE id="efxChainH" name="EffectsChain.h" compile="0" resource="0" file="Source/Effects/EffectsChain.h"/>

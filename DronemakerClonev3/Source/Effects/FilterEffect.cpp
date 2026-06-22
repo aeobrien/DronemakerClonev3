@@ -1,5 +1,6 @@
 #include "FilterEffect.h"
 #include <cmath>
+#include <cstdint>
 
 FilterEffect::FilterEffect()
 {
@@ -196,31 +197,35 @@ void FilterEffect::processSample (float& left, float& right)
 
 void FilterEffect::updateHarmonicFrequencies()
 {
-    // Scale intervals (semitones from root)
-    static const std::vector<std::vector<int>> scaleIntervals = {
-        { 0 },                          // 0: Octaves only
-        { 0, 7 },                       // 1: Fifths (root + fifth)
-        { 0, 2, 4, 5, 7, 9, 11 },        // 2: Ionian (Major)
-        { 0, 2, 3, 5, 7, 9, 10 },        // 3: Dorian
-        { 0, 1, 3, 5, 7, 8, 10 },        // 4: Phrygian
-        { 0, 2, 4, 6, 7, 9, 11 },        // 5: Lydian
-        { 0, 2, 4, 5, 7, 9, 10 },        // 6: Mixolydian
-        { 0, 2, 3, 5, 7, 8, 10 },        // 7: Aeolian (Natural Minor)
-        { 0, 1, 3, 5, 6, 8, 10 },        // 8: Locrian
-        { 0, 2, 4, 7, 9 },               // 9: Pentatonic Major
-        { 0, 3, 5, 7, 10 }               // 10: Pentatonic Minor
+    // Bitmask lookup: bit N set means semitone N is in the scale
+    static constexpr uint16_t scaleMasks[11] = {
+        0b000000000001,  // Octaves (root only)
+        0b000010000001,  // Fifths (root + fifth)
+        0b101010110101,  // Ionian (Major)
+        0b010101101101,  // Dorian
+        0b010101011011,  // Phrygian
+        0b101011010101,  // Lydian
+        0b010110110101,  // Mixolydian
+        0b010100101101,  // Aeolian (Natural Minor)
+        0b010100110011,  // Locrian
+        0b001010010101,  // Pentatonic Major
+        0b010010101001   // Pentatonic Minor
     };
 
-    const auto& intervals = scaleIntervals[scaleType];
+    // Extract intervals from bitmask for resonator generation
+    std::array<int, 12> intervals {};
+    int numIntervals = 0;
+    for (int i = 0; i < 12; ++i)
+        if (scaleMasks[scaleType] & (1u << i))
+            intervals[numIntervals++] = i;
     numResonators = 0;
 
     // Generate frequencies across audible range
     for (int octave = 0; octave < 8 && numResonators < maxResonators; ++octave)
     {
-        for (int interval : intervals)
+        for (int ii = 0; ii < numIntervals && numResonators < maxResonators; ++ii)
         {
-            if (numResonators >= maxResonators)
-                break;
+            int interval = intervals[ii];
 
             // MIDI note = root + octave * 12 + interval, starting from octave 1
             int midiNote = rootNote + (octave + 1) * 12 + interval;

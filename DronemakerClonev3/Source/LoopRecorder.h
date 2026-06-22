@@ -156,6 +156,12 @@ private:
         float hpState = 0.0f;
         float lpState = 0.0f;
 
+        // Cached filter coefficients (updated when params change, not per-sample)
+        float cachedHpCoeff = 0.0f;
+        float cachedLpCoeff = 1.0f;
+        float cachedModulatedVolume = 1.0f;
+        double cachedPlaybackRate = 1.0;
+
         // Wet/dry send levels
         float wetSend = 1.0f;            // How much processed audio goes to drone (0-1)
         float drySend = 1.0f;            // How much delayed processed audio goes to output (0-1)
@@ -198,6 +204,9 @@ private:
 
     // Helper to get sample with linear interpolation
     float getInterpolatedSample (const LoopSlot& slot, double position) const;
+
+    // Recompute cached filter coefficients for a slot
+    void updateSlotCoefficients (LoopSlot& slot);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LoopRecorder)
 };

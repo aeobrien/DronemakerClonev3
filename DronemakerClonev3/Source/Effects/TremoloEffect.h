@@ -15,21 +15,21 @@ public:
     void reset() override;
     juce::String getName() const override { return "Tremolo"; }
 
-    void setRate (float hz) { rate = juce::jlimit (0.1f, 20.0f, hz); }
-    void setDepth (float d) { depth = juce::jlimit (0.0f, 1.0f, d); }
+    void setRate (float hz) { rateSmooth.setTargetValue (juce::jlimit (0.1f, 20.0f, hz)); }
+    void setDepth (float d) { depthSmooth.setTargetValue (juce::jlimit (0.0f, 1.0f, d)); }
     void setWaveform (int wf) { waveform = juce::jlimit (0, 2, wf); }
     void setStereo (bool s) { stereo = s; }
 
-    float getRate() const { return rate; }
-    float getDepth() const { return depth; }
+    float getRate() const { return rateSmooth.getTargetValue(); }
+    float getDepth() const { return depthSmooth.getTargetValue(); }
     int getWaveform() const { return waveform; }
     bool isStereo() const { return stereo; }
 
 private:
     float phase = 0.0f;
 
-    float rate = 4.0f;      // Hz
-    float depth = 0.0f;     // 0-1, no tremolo by default
+    SmoothedParam rateSmooth { 4.0f };
+    SmoothedParam depthSmooth { 0.0f };
     int waveform = 0;       // 0=sine, 1=triangle, 2=square
     bool stereo = true;     // Phase offset between L/R
 

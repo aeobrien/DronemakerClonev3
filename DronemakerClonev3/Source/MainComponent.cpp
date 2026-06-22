@@ -1571,6 +1571,8 @@ void MainComponent::resized()
 
 void MainComponent::audioDeviceAboutToStart (juce::AudioIODevice* device)
 {
+    juce::FloatVectorOperations::disableDenormalisedNumberSupport();
+
     const int blockSize = device->getCurrentBufferSizeSamples();
     monoBuffer.setSize (1, blockSize, false, false, true);
     monoBuffer.clear();
@@ -1587,6 +1589,9 @@ void MainComponent::audioDeviceAboutToStart (juce::AudioIODevice* device)
     loopRecorder.prepareToPlay (currentSampleRate, blockSize);
     effectsChain.prepareToPlay (currentSampleRate, blockSize);
     modulationManager.prepareToPlay (currentSampleRate, blockSize);
+
+    masterVolumeSmooth.reset (currentSampleRate, 0.02);  // 20ms smoothing
+    masterVolumeSmooth.setCurrentAndTargetValue (masterVolume.load());
 }
 
 void MainComponent::audioDeviceStopped()
@@ -1644,6 +1649,9 @@ void MainComponent::audioDeviceIOCallbackWithContext (const float* const* inputC
     const bool bypassed = masterBypass.load();
     const float volume = masterVolume.load();
 
+    // Update smoothed master volume target
+    masterVolumeSmooth.setTargetValue (volume);
+
     // Master bypass - just pass through silence (or could pass through dry input)
     if (bypassed)
     {
@@ -1661,7 +1669,6 @@ void MainComponent::audioDeviceIOCallbackWithContext (const float* const* inputC
     {
         // Modulation mix value (may be overridden by modulation)
         float currentMix = mix;
-        float currentVolume = volume;
 
         for (int i = 0; i < numSamples; ++i)
         {
@@ -1726,20 +1733,19 @@ void MainComponent::audioDeviceIOCallbackWithContext (const float* const* inputC
             float loopMixMod, masterVolumeMod;
             modulationManager.applyModulation (loopRecorder, effectsChain, loopMixMod, masterVolumeMod);
 
-            // Update mix and volume if modulated (-1 means not modulated)
+            // Update mix if modulated (-1 means not modulated)
             if (loopMixMod >= 0.0f)
                 currentMix = loopMixMod;
             else
                 currentMix = mix;
 
+            // Apply smoothed master volume (with optional modulation multiplier)
+            float smoothedVol = masterVolumeSmooth.getNextValue();
             if (masterVolumeMod >= 0.0f)
-                currentVolume = masterVolumeMod * volume;  // Multiply with manual volume
-            else
-                currentVolume = volume;
+                smoothedVol *= masterVolumeMod;
 
-            // Apply master volume
-            outL *= currentVolume;
-            outR *= currentVolume;
+            outL *= smoothedVol;
+            outR *= smoothedVol;
 
             // Feed master output to spectrum visualiser in effect mode
             if (usePiLayout && piLoopDetail && !piLoopMode)
@@ -1786,9 +1792,8 @@ void MainComponent::timerCallback()
         }
         else if (loopRecorder.isRecording() && loopRecorder.getRecordingSlot() == i)
         {
-            static int pulseCounter = 0;
-            pulseCounter = (pulseCounter + 1) % 15;
-            float pulse = 0.7f + 0.3f * std::sin (pulseCounter * 0.4f);
+            recordPulseCounter = (recordPulseCounter + 1) % 15;
+            float pulse = 0.7f + 0.3f * std::sin (recordPulseCounter * 0.4f);
             buttonColour = juce::Colour::fromFloatRGBA (pulse, 0.1f, 0.1f, 1.0f);
         }
         else if (loopRecorder.isSlotActive (i))
@@ -1947,46 +1952,58 @@ void MainComponent::handleIncomingMidiMessage (juce::MidiInput* source,
         // Handle MIDI learn mode - only if we have a selection
         if (midiLearnActive.load() && midiLearnHasSelection.load())
         {
-            if (isCC || isNoteOn)
+            if (isNoteOn)
             {
-                processMidiLearn (isCC ? ccNumber : noteNumber, isNoteOn);
+                std::cerr << "[MIDI Learn] Accepting NoteOn " << noteNumber << " for mapping" << std::endl;
+                processMidiLearn (noteNumber, true);
+            }
+            else if (isCC)
+            {
+                // Require the CC value to change before accepting — this filters
+                // out idle/background CC traffic and ensures we capture the knob
+                // the user is actually moving.
+                auto it = midiLearnFirstCC.find (ccNumber);
+                if (it == midiLearnFirstCC.end())
+                {
+                    std::cerr << "[MIDI Learn] CC " << ccNumber << " first seen, baseline value=" << ccValue << std::endl;
+                    midiLearnFirstCC[ccNumber] = ccValue;
+                }
+                else if (ccValue != it->second)
+                {
+                    std::cerr << "[MIDI Learn] CC " << ccNumber << " value changed (" << it->second << " -> " << ccValue << "), accepting for mapping" << std::endl;
+                    processMidiLearn (ccNumber, false);
+                }
             }
             return;
         }
 
-        // Virtual encoder bank — contextual dispatch (takes priority)
-        bool handledByEncoder = false;
+        // MIDI-learned mappings take priority over encoder bank
+        bool handledByLearnedMapping = false;
+
         if (isCC)
-            handledByEncoder = encoderBank.handleCC (ccNumber, ccValue);
-        if (isNoteOn && !handledByEncoder)
-            handledByEncoder = encoderBank.handleNoteOn (noteNumber);
-
-        // Default loop toggle notes: 44-51 (G#2-D#3) → toggle record/play/stop
-        if (isNoteOn && !handledByEncoder)
-        {
-            int loopSlot = noteNumber - VirtualEncoderBank::loopToggleNoteBase;
-            if (loopSlot >= 0 && loopSlot < 8)
-            {
-                if (usePiLayout)
-                    piToggleLoop (loopSlot);
-                else
-                    loopButtons[loopSlot].triggerClick();
-                handledByEncoder = true;
-            }
-        }
-
-        // Handle CC messages for legacy mapped knobs (skip if encoder handled it)
-        if (isCC && !handledByEncoder)
         {
             auto it = midiCCMappings.find (ccNumber);
             if (it != midiCCMappings.end())
             {
+                handledByLearnedMapping = true;
                 if (it->second.type == MidiMapping::Knob && it->second.knobPtr != nullptr)
                 {
-                    float normValue = ccValue / 127.0f;
                     auto* knob = it->second.knobPtr;
                     double range = knob->getMaximum() - knob->getMinimum();
-                    knob->setValue (knob->getMinimum() + normValue * range);
+
+                    // Relative mode: 65 = CW (+1 detent), 63 = CCW (-1 detent)
+                    if (ccValue == 65 || ccValue == 63)
+                    {
+                        double step = range / 100.0;  // 1% per detent
+                        double delta = (ccValue == 65) ? step : -step;
+                        knob->setValue (knob->getValue() + delta);
+                    }
+                    else
+                    {
+                        // Absolute mode fallback for other controllers
+                        float normValue = ccValue / 127.0f;
+                        knob->setValue (knob->getMinimum() + normValue * range);
+                    }
                 }
                 else if (it->second.type == MidiMapping::LoopButton)
                 {
@@ -2007,12 +2024,12 @@ void MainComponent::handleIncomingMidiMessage (juce::MidiInput* source,
             }
         }
 
-        // Handle note messages — check encoder push buttons first, then legacy
-        if (isNoteOn && !handledByEncoder)
+        if (isNoteOn && !handledByLearnedMapping)
         {
             auto it = midiNoteMappings.find (noteNumber);
             if (it != midiNoteMappings.end())
             {
+                handledByLearnedMapping = true;
                 if (it->second.type == MidiMapping::LoopButton)
                 {
                     int loopIdx = it->second.targetIndex;
@@ -2028,6 +2045,27 @@ void MainComponent::handleIncomingMidiMessage (juce::MidiInput* source,
                 {
                     it->second.buttonPtr->triggerClick();
                 }
+            }
+        }
+
+        // Virtual encoder bank — contextual dispatch (only if no learned mapping handled it)
+        bool handledByEncoder = false;
+        if (isCC && !handledByLearnedMapping)
+            handledByEncoder = encoderBank.handleCC (ccNumber, ccValue);
+        if (isNoteOn && !handledByLearnedMapping && !handledByEncoder)
+            handledByEncoder = encoderBank.handleNoteOn (noteNumber);
+
+        // Default loop toggle notes: 44-51 (G#2-D#3) → toggle record/play/stop
+        if (isNoteOn && !handledByLearnedMapping && !handledByEncoder)
+        {
+            int loopSlot = noteNumber - VirtualEncoderBank::loopToggleNoteBase;
+            if (loopSlot >= 0 && loopSlot < 8)
+            {
+                if (usePiLayout)
+                    piToggleLoop (loopSlot);
+                else
+                    loopButtons[loopSlot].triggerClick();
+                handledByEncoder = true;
             }
         }
 
@@ -2056,10 +2094,12 @@ void MainComponent::toggleMidiLearnMode()
 {
     if (midiLearnActive.load())
     {
+        std::cerr << "[MIDI Learn] Exiting learn mode" << std::endl;
         exitMidiLearnMode();
     }
     else
     {
+        std::cerr << "[MIDI Learn] Entering learn mode" << std::endl;
         midiLearnActive.store (true);
         midiLearnHasSelection.store (false);
         midiLearnSelected = MidiMapping();
@@ -2086,6 +2126,7 @@ void MainComponent::selectControlForMidiLearn (juce::Slider* knob)
     midiLearnSelected.knobPtr = knob;
     midiLearnHasSelection.store (true);
     midiLearnButton.setButtonText ("Waiting...");
+    std::cerr << "[MIDI Learn] Selected knob: " << knob->getName() << " (ptr=" << (void*) knob << ")" << std::endl;
 }
 
 void MainComponent::selectLoopButtonForMidiLearn (int loopIndex)
@@ -2118,6 +2159,7 @@ void MainComponent::clearMidiLearnSelection()
 {
     midiLearnSelected = MidiMapping();
     midiLearnHasSelection.store (false);
+    midiLearnFirstCC.clear();
 }
 
 void MainComponent::processMidiLearn (int ccOrNote, bool isNote)
@@ -2128,15 +2170,29 @@ void MainComponent::processMidiLearn (int ccOrNote, bool isNote)
 
     MidiMapping mapping = midiLearnSelected;
 
+    const char* targetDesc = "unknown";
+    if (mapping.type == MidiMapping::Knob)       targetDesc = "Knob";
+    else if (mapping.type == MidiMapping::LoopButton)  targetDesc = "LoopButton";
+    else if (mapping.type == MidiMapping::Button)      targetDesc = "Button";
+
     if (isNote)
     {
-        // Notes can map to buttons (loop buttons or other buttons)
         midiNoteMappings[ccOrNote] = mapping;
+        std::cerr << "[MIDI Learn] MAPPED Note " << ccOrNote << " -> " << targetDesc
+                  << " (index=" << mapping.targetIndex << ")" << std::endl;
     }
     else
     {
-        // CCs can map to anything
         midiCCMappings[ccOrNote] = mapping;
+        std::cerr << "[MIDI Learn] MAPPED CC " << ccOrNote << " -> " << targetDesc
+                  << " (ptr=" << (void*) mapping.knobPtr << ")" << std::endl;
+
+        // If this CC is in the encoder bank range, warn about the override
+        if (encoderBank.isEncoderCC (ccOrNote))
+            std::cerr << "[MIDI Learn] NOTE: CC " << ccOrNote << " is in encoder bank range (CC "
+                      << VirtualEncoderBank::defaultCCBase << "-"
+                      << (VirtualEncoderBank::defaultCCBase + VirtualEncoderBank::numEncoders - 1)
+                      << ") -- learned mapping will take priority" << std::endl;
     }
 
     // Clear selection but stay in learn mode
@@ -2700,7 +2756,7 @@ void MainComponent::updateLoopParameterKnobs()
     // Knob 6: High pass (log-scaled: 0-1 normalized, mapped to 20-5000 Hz)
     {
         const double hpMin = 20.0, hpMax = 5000.0;
-        double currentHP = loopHPSliders[slot].getValue();
+        double currentHP = (double) loopRecorder.getSlotHighPass (slot);
         // Convert current Hz to normalized 0-1 log position
         double hpNorm = (std::log (currentHP) - std::log (hpMin)) / (std::log (hpMax) - std::log (hpMin));
         hpNorm = juce::jlimit (0.0, 1.0, hpNorm);
@@ -2727,7 +2783,7 @@ void MainComponent::updateLoopParameterKnobs()
     // Knob 7: Low pass (log-scaled: 0-1 normalized, mapped to 200-20000 Hz)
     {
         const double lpMin = 200.0, lpMax = 20000.0;
-        double currentLP = loopLPSliders[slot].getValue();
+        double currentLP = (double) loopRecorder.getSlotLowPass (slot);
         // Convert current Hz to normalized 0-1 log position
         double lpNorm = (std::log (currentLP) - std::log (lpMin)) / (std::log (lpMax) - std::log (lpMin));
         lpNorm = juce::jlimit (0.0, 1.0, lpNorm);
@@ -2751,13 +2807,13 @@ void MainComponent::updateLoopParameterKnobs()
         paramKnobs[numActiveKnobs - 1].updateText();
     }
 
-    // Knob 8: Volume
-    addKnob ("Vol", 0, 2, 0.01, loopVolumeSliders[slot].getValue(),
+    // Knob 8: Volume — read from loopRecorder (source of truth), not from loopVolumeSliders
+    addKnob ("Vol", 0, 2, 0.01, loopRecorder.getSlotVolume (slot),
              [this](float v) {
                  int s = TouchLoopButton::selectedSlot;
                  if (s >= 0) {
                      loopRecorder.setSlotVolume (s, v);
-                     loopVolumeSliders[s].setValue (v, juce::dontSendNotification);
+                     loopVolumeSliders[s].setValue (juce::jlimit (0.0f, 1.0f, v), juce::dontSendNotification);
                  }
              });
 
@@ -3398,7 +3454,7 @@ void MainComponent::updateModulationParameterKnobs()
     }
     else
     {
-        addKnob ("\xe2\x80\x94", 0, 1, 0.01, 0, [](float) {});
+        addKnob ("--", 0, 1, 0.01, 0, [](float) {});
     }
 
     // ===== ENCODER 7: Min modulation range =====
@@ -3414,7 +3470,7 @@ void MainComponent::updateModulationParameterKnobs()
     }
     else
     {
-        addKnob ("\xe2\x80\x94", 0, 1, 0.01, 0, [](float) {});
+        addKnob ("--", 0, 1, 0.01, 0, [](float) {});
     }
 
     // ===== ENCODER 8: Max modulation range =====
@@ -3430,7 +3486,7 @@ void MainComponent::updateModulationParameterKnobs()
     }
     else
     {
-        addKnob ("\xe2\x80\x94", 0, 1, 0.01, 0, [](float) {});
+        addKnob ("--", 0, 1, 0.01, 0, [](float) {});
     }
 
     // Bind push buttons

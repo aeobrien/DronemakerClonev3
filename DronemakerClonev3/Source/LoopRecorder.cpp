@@ -1,5 +1,4 @@
 #include "LoopRecorder.h"
-#include <iostream>
 
 LoopRecorder::LoopRecorder()
 {
@@ -32,6 +31,8 @@ void LoopRecorder::prepareToPlay (double sampleRate, int /*samplesPerBlock*/)
         slot.historySamplesFed = 0;
         // Calculate per-slot max samples from settings
         slot.maxSamplesForSlot = static_cast<int> (sampleRate * slot.settings.maxRecordLengthSeconds);
+        // Initialize cached coefficients
+        updateSlotCoefficients (slot);
     }
 
     activeRecordSlot = -1;
@@ -69,6 +70,8 @@ void LoopRecorder::startRecording (int slot)
     s.historySamplesFed = 0;
     // Recalculate max samples in case settings changed
     s.maxSamplesForSlot = static_cast<int> (currentSampleRate * s.settings.maxRecordLengthSeconds);
+    // Pre-load the post-record automation so stopRecording() doesn't allocate
+    s.executor.preloadSequence (s.settings.postRecordSequence);
     activeRecordSlot = slot;
 }
 
@@ -87,8 +90,8 @@ void LoopRecorder::stopRecording()
             slot.hasContent = true;
             slot.playPosition = 0.0;
             slot.automationLevel = 1.0f;
-            // Start the post-record automation sequence
-            slot.executor.startSequence (slot.settings.postRecordSequence, currentSampleRate);
+            // Activate pre-loaded automation (no allocation on audio thread)
+            slot.executor.activatePreloaded (currentSampleRate);
         }
         else
         {
@@ -164,22 +167,14 @@ void LoopRecorder::recordSample (float sample)
         slot.length++;
 
         // Also feed the history buffer during recording so dry output primes
-        // Apply filters and volume to the recording sample (same processing as playback)
-        float modulatedHpFreq = slot.hpFreq * std::pow (2.0f, slot.hpFreqMod * 4.0f);
-        float modulatedLpFreq = slot.lpFreq * std::pow (2.0f, slot.lpFreqMod * 4.0f);
-        modulatedHpFreq = juce::jlimit (20.0f, 5000.0f, modulatedHpFreq);
-        modulatedLpFreq = juce::jlimit (200.0f, 20000.0f, modulatedLpFreq);
-
-        float hpCoeff = 1.0f - std::exp (-2.0f * juce::MathConstants<float>::pi * modulatedHpFreq / static_cast<float> (currentSampleRate));
-        slot.hpState += hpCoeff * (sample - slot.hpState);
+        // Apply filters and volume using pre-computed coefficients
+        slot.hpState += slot.cachedHpCoeff * (sample - slot.hpState);
         float hpOutput = sample - slot.hpState;
 
-        float lpCoeff = 1.0f - std::exp (-2.0f * juce::MathConstants<float>::pi * modulatedLpFreq / static_cast<float> (currentSampleRate));
-        slot.lpState += lpCoeff * (hpOutput - slot.lpState);
+        slot.lpState += slot.cachedLpCoeff * (hpOutput - slot.lpState);
         float filtered = slot.lpState;
 
-        float modulatedVolume = juce::jlimit (0.0f, 2.0f, slot.volume + slot.volumeMod);
-        float processed = filtered * modulatedVolume;
+        float processed = filtered * slot.cachedModulatedVolume;
 
         // Write to history buffer
         if (slot.historyBufferSize > 0)
@@ -231,25 +226,52 @@ float LoopRecorder::getSlotDrySend (int slot) const
 void LoopRecorder::setSlotVolume (int slot, float vol)
 {
     if (slot >= 0 && slot < numSlots)
+    {
         slots[slot].volume = juce::jlimit (0.0f, 2.0f, vol);
+        updateSlotCoefficients (slots[slot]);
+    }
 }
 
 void LoopRecorder::setSlotHighPass (int slot, float freqHz)
 {
     if (slot >= 0 && slot < numSlots)
+    {
         slots[slot].hpFreq = juce::jlimit (20.0f, 5000.0f, freqHz);
+        updateSlotCoefficients (slots[slot]);
+    }
 }
 
 void LoopRecorder::setSlotLowPass (int slot, float freqHz)
 {
     if (slot >= 0 && slot < numSlots)
+    {
         slots[slot].lpFreq = juce::jlimit (200.0f, 20000.0f, freqHz);
+        updateSlotCoefficients (slots[slot]);
+    }
 }
 
 void LoopRecorder::setSlotPitchOctave (int slot, int octave)
 {
     if (slot >= 0 && slot < numSlots)
+    {
         slots[slot].pitchOctave = juce::jlimit (-2, 2, octave);
+        updateSlotCoefficients (slots[slot]);
+    }
+}
+
+void LoopRecorder::updateSlotCoefficients (LoopSlot& slot)
+{
+    float sr = static_cast<float> (currentSampleRate);
+
+    float modulatedHpFreq = slot.hpFreq * std::pow (2.0f, slot.hpFreqMod * 4.0f);
+    float modulatedLpFreq = slot.lpFreq * std::pow (2.0f, slot.lpFreqMod * 4.0f);
+    modulatedHpFreq = juce::jlimit (20.0f, 5000.0f, modulatedHpFreq);
+    modulatedLpFreq = juce::jlimit (200.0f, 20000.0f, modulatedLpFreq);
+
+    slot.cachedHpCoeff = 1.0f - std::exp (-2.0f * juce::MathConstants<float>::pi * modulatedHpFreq / sr);
+    slot.cachedLpCoeff = 1.0f - std::exp (-2.0f * juce::MathConstants<float>::pi * modulatedLpFreq / sr);
+    slot.cachedModulatedVolume = juce::jlimit (0.0f, 2.0f, slot.volume + slot.volumeMod);
+    slot.cachedPlaybackRate = std::pow (2.0, slot.pitchOctave);
 }
 
 void LoopRecorder::setSlotTrimStart (int slot, float normalised)
@@ -298,19 +320,28 @@ int LoopRecorder::getSlotEffectiveLength (int slot) const
 void LoopRecorder::setSlotVolumeMod (int slot, float mod)
 {
     if (slot >= 0 && slot < numSlots)
+    {
         slots[slot].volumeMod = juce::jlimit (-1.0f, 1.0f, mod);
+        updateSlotCoefficients (slots[slot]);
+    }
 }
 
 void LoopRecorder::setSlotFilterHPMod (int slot, float mod)
 {
     if (slot >= 0 && slot < numSlots)
+    {
         slots[slot].hpFreqMod = juce::jlimit (-1.0f, 1.0f, mod);
+        updateSlotCoefficients (slots[slot]);
+    }
 }
 
 void LoopRecorder::setSlotFilterLPMod (int slot, float mod)
 {
     if (slot >= 0 && slot < numSlots)
+    {
         slots[slot].lpFreqMod = juce::jlimit (-1.0f, 1.0f, mod);
+        updateSlotCoefficients (slots[slot]);
+    }
 }
 
 float LoopRecorder::getInterpolatedSample (const LoopSlot& slot, double position) const
@@ -357,37 +388,24 @@ float LoopRecorder::getLoopMix()
             int endSample   = (int) (slot.trimEnd * slot.length);
             int effectiveLen = juce::jmax (1, endSample - startSample);
 
-            // Get playback rate based on pitch octave
-            double playbackRate = std::pow (2.0, slot.pitchOctave);
-
             // Read sample with interpolation
             float sample = getInterpolatedSample (slot, slot.playPosition);
 
-            // Calculate modulated filter frequencies
-            float modulatedHpFreq = slot.hpFreq * std::pow (2.0f, slot.hpFreqMod * 4.0f);
-            float modulatedLpFreq = slot.lpFreq * std::pow (2.0f, slot.lpFreqMod * 4.0f);
-            modulatedHpFreq = juce::jlimit (20.0f, 5000.0f, modulatedHpFreq);
-            modulatedLpFreq = juce::jlimit (200.0f, 20000.0f, modulatedLpFreq);
-
-            // Apply high-pass filter
-            float hpCoeff = 1.0f - std::exp (-2.0f * juce::MathConstants<float>::pi * modulatedHpFreq / static_cast<float> (currentSampleRate));
-            slot.hpState += hpCoeff * (sample - slot.hpState);
+            // Apply filters using pre-computed coefficients
+            slot.hpState += slot.cachedHpCoeff * (sample - slot.hpState);
             float hpOutput = sample - slot.hpState;
 
-            // Apply low-pass filter
-            float lpCoeff = 1.0f - std::exp (-2.0f * juce::MathConstants<float>::pi * modulatedLpFreq / static_cast<float> (currentSampleRate));
-            slot.lpState += lpCoeff * (hpOutput - slot.lpState);
+            slot.lpState += slot.cachedLpCoeff * (hpOutput - slot.lpState);
             float filtered = slot.lpState;
 
-            // Apply volume with modulation AND automation level
-            float modulatedVolume = juce::jlimit (0.0f, 2.0f, slot.volume + slot.volumeMod);
-            float slotOutput = filtered * modulatedVolume * slot.automationLevel;
+            // Apply volume with automation level
+            float slotOutput = filtered * slot.cachedModulatedVolume * slot.automationLevel;
             slot.lastFilteredSample = slotOutput;
             mix += slotOutput;
             activeCount++;
 
             // Advance play position, wrapping within trim region
-            slot.playPosition += playbackRate;
+            slot.playPosition += slot.cachedPlaybackRate;
             if (slot.playPosition >= endSample)
                 slot.playPosition = startSample + std::fmod (slot.playPosition - startSample, (double) effectiveLen);
             if (slot.playPosition < startSample)
@@ -439,12 +457,6 @@ LoopRecorder::LoopMixOutput LoopRecorder::getLoopMixSplit()
         if (bounceState == LoopSlot::BounceState::Bounced && slot.bouncedLength > 0
             && ! slot.transitioning)
         {
-            static int dbgCounter = 0;
-            if (++dbgCounter % 44100 == 0)
-                std::cerr << "[Bounce] Playing bounced: headA=" << slot.bounceHeadA
-                          << " headB=" << slot.bounceHeadB
-                          << " len=" << slot.bouncedLength
-                          << " drySend=" << slot.drySend << std::endl;
             // Hann crossfade between two voices offset by half the bounced length
             double normA = slot.bounceHeadA / static_cast<double> (slot.bouncedLength);
             double normB = slot.bounceHeadB / static_cast<double> (slot.bouncedLength);
@@ -496,31 +508,18 @@ LoopRecorder::LoopMixOutput LoopRecorder::getLoopMixSplit()
             int endSample   = (int) (slot.trimEnd * slot.length);
             int effectiveLen = juce::jmax (1, endSample - startSample);
 
-            // Get playback rate
-            double playbackRate = std::pow (2.0, slot.pitchOctave);
-
             // Read sample with interpolation
             float sample = getInterpolatedSample (slot, slot.playPosition);
 
-            // Calculate modulated filter frequencies
-            float modulatedHpFreq = slot.hpFreq * std::pow (2.0f, slot.hpFreqMod * 4.0f);
-            float modulatedLpFreq = slot.lpFreq * std::pow (2.0f, slot.lpFreqMod * 4.0f);
-            modulatedHpFreq = juce::jlimit (20.0f, 5000.0f, modulatedHpFreq);
-            modulatedLpFreq = juce::jlimit (200.0f, 20000.0f, modulatedLpFreq);
-
-            // Apply high-pass filter
-            float hpCoeff = 1.0f - std::exp (-2.0f * juce::MathConstants<float>::pi * modulatedHpFreq / static_cast<float> (currentSampleRate));
-            slot.hpState += hpCoeff * (sample - slot.hpState);
+            // Apply filters using pre-computed coefficients
+            slot.hpState += slot.cachedHpCoeff * (sample - slot.hpState);
             float hpOutput = sample - slot.hpState;
 
-            // Apply low-pass filter
-            float lpCoeff = 1.0f - std::exp (-2.0f * juce::MathConstants<float>::pi * modulatedLpFreq / static_cast<float> (currentSampleRate));
-            slot.lpState += lpCoeff * (hpOutput - slot.lpState);
+            slot.lpState += slot.cachedLpCoeff * (hpOutput - slot.lpState);
             float filtered = slot.lpState;
 
-            // Apply volume with modulation AND automation level
-            float modulatedVolume = juce::jlimit (0.0f, 2.0f, slot.volume + slot.volumeMod);
-            float processed = filtered * modulatedVolume * slot.automationLevel;
+            // Apply volume with automation level
+            float processed = filtered * slot.cachedModulatedVolume * slot.automationLevel;
             slot.lastFilteredSample = processed;
 
             // Write processed sample to history buffer
@@ -563,10 +562,6 @@ LoopRecorder::LoopMixOutput LoopRecorder::getLoopMixSplit()
             if (slot.transitioning && bounceState == LoopSlot::BounceState::Bounced
                 && slot.bouncedLength > 0)
             {
-                static int transDbg = 0;
-                if (++transDbg % 44100 == 0)
-                    std::cerr << "[Bounce] Transitioning: wetFade=" << slot.wetFadeGain
-                              << " bounceFade=" << slot.bounceFadeGain << std::endl;
                 // Crossfaded dual-voice bounce playback
                 double normA = slot.bounceHeadA / static_cast<double> (slot.bouncedLength);
                 double normB = slot.bounceHeadB / static_cast<double> (slot.bouncedLength);
@@ -605,7 +600,7 @@ LoopRecorder::LoopMixOutput LoopRecorder::getLoopMixSplit()
             }
 
             // Advance play position
-            slot.playPosition += playbackRate;
+            slot.playPosition += slot.cachedPlaybackRate;
             if (slot.playPosition >= endSample)
                 slot.playPosition = startSample + std::fmod (slot.playPosition - startSample, (double) effectiveLen);
             if (slot.playPosition < startSample)

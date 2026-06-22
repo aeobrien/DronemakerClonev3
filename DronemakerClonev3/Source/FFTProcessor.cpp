@@ -1,7 +1,7 @@
 #include "FFTProcessor.h"
 #include <complex>
-#include <vector>
 #include <cmath>
+#include <cstdint>
 
 FFTProcessor::FFTProcessor() :
     fft(fftOrder),
@@ -40,20 +40,20 @@ bool FFTProcessor::isFrequencyInScale(float freq) const
 {
     if (freq < 20.0f) return true;  // Allow very low frequencies through
 
-    // Scale intervals (semitones from root that are included)
+    // Bitmask lookup: bit N set means semitone N is in the scale
     // 0=Octaves, 1=Fifths, 2=Ionian, 3=Dorian, 4=Phrygian, 5=Lydian, 6=Mixolydian, 7=Aeolian, 8=Locrian, 9=Pent Maj, 10=Pent Min
-    static const std::vector<std::vector<int>> scaleIntervals = {
-        {0},                            // Octaves (root only)
-        {0, 7},                         // Fifths (root + fifth)
-        {0, 2, 4, 5, 7, 9, 11},        // Ionian (Major)
-        {0, 2, 3, 5, 7, 9, 10},        // Dorian
-        {0, 1, 3, 5, 7, 8, 10},        // Phrygian
-        {0, 2, 4, 6, 7, 9, 11},        // Lydian
-        {0, 2, 4, 5, 7, 9, 10},        // Mixolydian
-        {0, 2, 3, 5, 7, 8, 10},        // Aeolian (Natural Minor)
-        {0, 1, 3, 5, 6, 8, 10},        // Locrian
-        {0, 2, 4, 7, 9},               // Pentatonic Major
-        {0, 3, 5, 7, 10}               // Pentatonic Minor
+    static constexpr uint16_t scaleMasks[11] = {
+        0b000000000001,  // Octaves (root only)
+        0b000010000001,  // Fifths (root + fifth)
+        0b101010110101,  // Ionian (Major)
+        0b010101101101,  // Dorian
+        0b010101011011,  // Phrygian
+        0b101011010101,  // Lydian
+        0b010110110101,  // Mixolydian
+        0b010100101101,  // Aeolian (Natural Minor)
+        0b010100110011,  // Locrian
+        0b001010010101,  // Pentatonic Major
+        0b010010101001   // Pentatonic Minor
     };
 
     // Convert frequency to MIDI note number
@@ -67,15 +67,8 @@ bool FFTProcessor::isFrequencyInScale(float freq) const
     // Calculate interval from root note
     int intervalFromRoot = ((pitchClass - harmonicRootNote) + 12) % 12;
 
-    // Check if this interval is in the current scale
-    const auto& intervals = scaleIntervals[harmonicScaleType];
-    for (int interval : intervals)
-    {
-        if (intervalFromRoot == interval)
-            return true;
-    }
-
-    return false;
+    // Check if this interval is in the current scale via bitmask
+    return (scaleMasks[harmonicScaleType] & (1u << intervalFromRoot)) != 0;
 }
 
 float FFTProcessor::processSample(float sample, bool bypassed)
