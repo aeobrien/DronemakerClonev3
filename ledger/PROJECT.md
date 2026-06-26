@@ -4,6 +4,7 @@
 
 ## Status
 
+**Lane:** personal
 **Phase:** Prototyping — PCB build + enclosure design review
 **Last updated:** 2026-04-11
 
