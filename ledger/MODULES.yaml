@@ -48,13 +48,13 @@ modules:
     project: DronemakerClonev3
     subsystem: Software - DSP Engine
     name: Reorderable effects rack
-    capability: Processes the instrument output through a six-effect chain with runtime-reorderable routing and per-effect gain compensation.
+    capability: Processes the instrument output through a six-effect chain with runtime-reorderable routing.
     status: working
     approach: Wraps six custom effect implementations behind a shared base class and processes them in an atomically updated order within the JUCE audio callback.
     tech: [JUCE, C++, std::atomic]
-    io: { in: "stereo audio plus effect parameters and modulation offsets", out: "processed stereo audio" }
+    io: { in: "stereo audio plus effect parameters", out: "processed stereo audio" }
     code_refs: ["DronemakerClonev3/Source/Effects/EffectsChain.h", "DronemakerClonev3/Source/Effects/EffectsChain.cpp", "DronemakerClonev3/Source/Effects/EffectBase.h", "DronemakerClonev3/Source/Effects/*.h", "DronemakerClonev3/Source/Effects/*.cpp"]
-    known_gaps: ["Pi performance after the recent optimisation pass is still unverified in the subsystem doc."]
+    known_gaps: ["`setModulation` is currently a stub in `EffectsChain` and ignores its arguments; modulation handling is delegated to `MainComponent::applyModulation` rather than implemented inside this module.", "Pi performance after the recent optimisation pass is still unverified in the subsystem doc."]
     match_keywords: [effects-chain, reorderable-effects, guitar-fx, delay, granular, tremolo, distortion, tape]
 
   - id: dronemakerclonev3.software-dsp-engine.modulation-router
