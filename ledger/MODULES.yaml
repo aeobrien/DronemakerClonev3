@@ -1,0 +1,188 @@
+project_shape:
+  scale: multi-subsystem
+  has_subsystem_layer: true
+  expected_modules: "12-20"
+  kind: product
+
+modules:
+  - id: dronemakerclonev3.software-dsp-engine.spectral-drone-engine
+    project: DronemakerClonev3
+    subsystem: Software - DSP Engine
+    name: Spectral drone engine
+    capability: Transforms live or loop-fed audio into a sustained spectral drone using STFT analysis, per-bin history, decay, pitch, and filtering controls.
+    status: working
+    approach: Uses a per-channel JUCE DSP FFT pipeline with overlap-add resynthesis, magnitude history, smoothing, thresholding, pitch shift, and harmonic filtering inside the audio callback.
+    tech: [JUCE, juce::dsp::FFT, juce::dsp::WindowingFunction, C++]
+    io: { in: "mono sample stream plus drone parameters", out: "processed mono/stereo drone contribution with FFT-sized latency" }
+    code_refs: ["DronemakerClonev3/Source/FFTProcessor.h", "DronemakerClonev3/Source/FFTProcessor.cpp", "DronemakerClonev3/Source/MainComponent.cpp"]
+    known_gaps: ["Performance headroom on Raspberry Pi 5 with all loops/effects active is still untested.", "The subsystem doc calls out a future idea to allow repositioning the drone engine elsewhere in the effects chain."]
+    match_keywords: [spectral-freeze, stft-resynthesis, spectral-drone, phase-vocoder, fft-effect, peak-hold]
+
+  - id: dronemakerclonev3.software-dsp-engine.loop-engine
+    project: DronemakerClonev3
+    subsystem: Software - DSP Engine
+    name: Loop recorder and bounce engine
+    capability: Records, trims, plays, delays, filters, automates, and bounce-renders up to eight loop slots for feeding the drone and dry outputs.
+    status: working
+    approach: Keeps per-slot buffers and state in C++, performs per-sample playback/filtering in the audio thread, and blends immediate drone send with delayed dry playback and bounced stereo material.
+    tech: [JUCE, C++, std::vector, std::atomic]
+    io: { in: "live mono input, slot settings, automation sequences, modulation offsets", out: "per-sample drone send plus delayed dry stereo loop output" }
+    code_refs: ["DronemakerClonev3/Source/LoopRecorder.h", "DronemakerClonev3/Source/LoopRecorder.cpp", "DronemakerClonev3/Source/LoopAutomation.h", "DronemakerClonev3/Source/LoopBouncer.h"]
+    known_gaps: ["Several future loop features remain open in docs, including exact drone offset tuning and additional bounce logistics/UI work.", "No session persistence is documented; loop state resets on restart."]
+    match_keywords: [loop-recorder, looper, bounce-in-place, loop-trim, loop-mixer, delayed-dry-playback]
+
+  - id: dronemakerclonev3.software-dsp-engine.loop-automation-executor
+    project: DronemakerClonev3
+    subsystem: Software - DSP Engine
+    name: Loop automation executor
+    capability: Plays sample-accurate automation sequences that start or stop loop playback and ramp loop level over time.
+    status: working
+    approach: Copies or preloads command sequences, then executes them sample-by-sample in the audio thread with atomics for UI-visible state.
+    tech: [C++, std::atomic]
+    io: { in: "automation command sequences and sample rate", out: "current playback-enabled state and automation gain per loop slot" }
+    code_refs: ["DronemakerClonev3/Source/LoopSequenceExecutor.h", "DronemakerClonev3/Source/LoopSequenceExecutor.cpp", "DronemakerClonev3/Source/LoopAutomation.h", "DronemakerClonev3/Source/LoopAutomationEditor.h", "DronemakerClonev3/Source/LoopAutomationEditor.cpp", "DronemakerClonev3/Source/AutomationPresets.h"]
+    known_gaps: []
+    match_keywords: [automation-playback, sample-accurate-automation, timeline-executor, loop-sequencer, gain-ramp]
+
+  - id: dronemakerclonev3.software-dsp-engine.effects-rack
+    project: DronemakerClonev3
+    subsystem: Software - DSP Engine
+    name: Reorderable effects rack
+    capability: Processes the instrument output through a six-effect chain with runtime-reorderable routing and per-effect gain compensation.
+    status: working
+    approach: Wraps six custom effect implementations behind a shared base class and processes them in an atomically updated order within the JUCE audio callback.
+    tech: [JUCE, C++, std::atomic]
+    io: { in: "stereo audio plus effect parameters and modulation offsets", out: "processed stereo audio" }
+    code_refs: ["DronemakerClonev3/Source/Effects/EffectsChain.h", "DronemakerClonev3/Source/Effects/EffectsChain.cpp", "DronemakerClonev3/Source/Effects/EffectBase.h", "DronemakerClonev3/Source/Effects/*.h", "DronemakerClonev3/Source/Effects/*.cpp"]
+    known_gaps: ["Pi performance after the recent optimisation pass is still unverified in the subsystem doc."]
+    match_keywords: [effects-chain, reorderable-effects, guitar-fx, delay, granular, tremolo, distortion, tape]
+
+  - id: dronemakerclonev3.software-dsp-engine.modulation-router
+    project: DronemakerClonev3
+    subsystem: Software - DSP Engine
+    name: Modulation router
+    capability: Generates and routes LFO, envelope follower, and random modulation signals into loop and effects parameters.
+    status: working
+    approach: Processes multiple modulation sources every sample, accumulates target offsets, and applies them to the loop engine and effects rack.
+    tech: [JUCE, C++]
+    io: { in: "audio sidechain input plus modulation source settings", out: "parameter offsets for loops, effects, loop mix, and master volume" }
+    code_refs: ["DronemakerClonev3/Source/Modulation/ModulationManager.h", "DronemakerClonev3/Source/Modulation/ModulationManager.cpp", "DronemakerClonev3/Source/Modulation/ModulationSource.h"]
+    known_gaps: []
+    match_keywords: [modulation-matrix, lfo, envelope-follower, random-modulation, parameter-routing]
+
+  - id: dronemakerclonev3.software-ui-control.touch-ui-shell
+    project: DronemakerClonev3
+    subsystem: Software - UI and Control
+    name: Touchscreen UI shell
+    capability: Renders the main instrument interface, including the Pi-first touch layout, loop views, resource/settings dialogs, and modulation page.
+    status: working
+    approach: Builds the app UI directly in JUCE Components, with MainComponent owning audio/UI state and PiLayout providing the touchscreen-optimized presentation.
+    tech: [JUCE, C++]
+    io: { in: "mouse or touch events, timer updates, audio state snapshots, CLI layout flags", out: "interactive instrument UI and parameter changes" }
+    code_refs: ["DronemakerClonev3/Source/Main.cpp", "DronemakerClonev3/Source/MainComponent.h", "DronemakerClonev3/Source/MainComponent.cpp", "DronemakerClonev3/Source/PiLayout.h", "DronemakerClonev3/Source/PiLayout.cpp", "DronemakerClonev3/Source/Modulation/ModulationPanel.h"]
+    known_gaps: ["The subsystem doc still calls for hardware-tested UI polish.", "PFL control for headphone monitoring still needs to be added to the touchscreen UI.", "The kiosk setup doc notes a known issue where the Settings window becomes a trap in kiosk mode."]
+    match_keywords: [touchscreen-ui, juce-gui, kiosk-ui, instrument-ui, performance-interface]
+
+  - id: dronemakerclonev3.software-ui-control.midi-control-mapping
+    project: DronemakerClonev3
+    subsystem: Software - UI and Control
+    name: MIDI control mapping layer
+    capability: Maps physical controller messages into contextual encoder banks, loop toggles, and MIDI-learned parameter bindings.
+    status: working
+    approach: Uses a header-only virtual encoder bank plus MainComponent dispatch and periodic MIDI device rescans to route incoming CC and Note messages to the active controls.
+    tech: [JUCE, USB MIDI, C++]
+    io: { in: "USB MIDI CC and Note messages", out: "parameter updates, control selection, loop toggles, and learned mappings" }
+    code_refs: ["DronemakerClonev3/Source/VirtualEncoderBank.h", "DronemakerClonev3/Source/MainComponent.h", "DronemakerClonev3/Source/MainComponent.cpp", "docs/software/ENCODER_SYSTEM_ROADMAP.md"]
+    known_gaps: ["The encoder roadmap still shows some loop-mode binding slots as TBD.", "The project-level docs leave 14-bit MIDI CC support as a pending decision."]
+    match_keywords: [midi-learn, control-mapping, virtual-encoders, controller-layer, contextual-controls]
+
+  - id: dronemakerclonev3.midi-controller.controller-pcb-package
+    project: DronemakerClonev3
+    subsystem: MIDI Controller
+    name: Controller PCB package
+    capability: Defines the Teensy-based controller hardware, connector pinout, BOM, and fabrication outputs for the custom encoder and RGB-button board.
+    status: partial
+    approach: Uses a KiCad design with through-hole parts, JST harness headers, daisy-chained 74HC595 LED drivers, and generated production and gerber artifacts.
+    tech: [KiCad, PCB fabrication gerbers, IPC netlist]
+    io: { in: "encoder/button electrical requirements and pin assignments", out: "KiCad board, schematic, BOM, positions, and manufacturer-ready zip bundles" }
+    code_refs: ["hardware/midi-controller/Teensy_4.1_Based_MCU.kicad_sch", "hardware/midi-controller/Teensy_4.1_Based_MCU.kicad_pcb", "hardware/midi-controller/production/*", "hardware/midi-controller/gerber_to_order/*", "hardware/midi-controller/PCB_BUILD_CHECKLIST.md", "ledger/subsystems/midi-controller.md"]
+    known_gaps: ["Rev 1 PCB has the confirmed SRCLK/RCLK footprint swap on U1 and U3 and needs either the documented workaround or a rev 2 fix.", "U2 rework still awaited physical verification after the first pin-lift attempt.", "Button loom wiring issues are documented for several harnesses."]
+    match_keywords: [midi-controller-pcb, teensy-controller, kicad, encoder-matrix, rgb-button-board, shift-register-leds]
+
+  - id: dronemakerclonev3.midi-controller.teensy-midi-firmware
+    project: DronemakerClonev3
+    subsystem: MIDI Controller
+    name: Teensy MIDI firmware
+    capability: Scans encoders and buttons, emits USB MIDI control messages, and receives LED colour updates for the hardware controller.
+    status: partial
+    approach: Runs Arduino-style Teensy firmware using the Encoder library and built-in usbMIDI handlers, with dedicated hardware test sketches for bring-up and diagnostics.
+    tech: [Teensyduino, Arduino, Encoder library, usbMIDI]
+    io: { in: "encoder quadrature, switch states, incoming MIDI CC for LEDs", out: "USB MIDI CC/Note messages and shift-register LED drive bytes" }
+    code_refs: ["firmware/DronemakerController/DronemakerController.ino", "firmware/tests/*.ino", "ledger/subsystems/midi-controller.md", "ledger/ROADMAP.md"]
+    known_gaps: ["The firmware workaround depends on the PCB routing bug and U2 physical swap being validated on hardware.", "LED mapping changes are noted as not fully verified due to solder-joint issues.", "14-bit MIDI CC support is scaffolded in comments but not active."]
+    match_keywords: [teensy-midi, controller-firmware, encoder-scanning, usb-midi, shift-register-led-driver]
+
+  - id: dronemakerclonev3.raspberry-pi-platform.kiosk-runtime
+    project: DronemakerClonev3
+    subsystem: Raspberry Pi Platform
+    name: Pi kiosk runtime
+    capability: Boots the app directly into a fullscreen kiosk session on Raspberry Pi and provides a simple remote update workflow.
+    status: working
+    approach: Uses Raspberry Pi OS shell or systemd launch scripts, xinit without a window manager, and a build-and-restart update script around the JUCE binary.
+    tech: [Raspberry Pi OS, bash, systemd, xinit, CMake, JUCE, ALSA]
+    io: { in: "boot/login on tty1, built app binary, git updates", out: "fullscreen kiosk app session and restarted service after rebuild" }
+    code_refs: ["pi-kiosk/SETUP.md", "pi-kiosk/kiosk-start.sh", "pi-kiosk/update.sh", "pi-kiosk/dronemaker.service", "ledger/subsystems/raspberry-pi-platform.md"]
+    known_gaps: ["Real-time scheduling, PSU noise, and overall Pi performance headroom are still open questions.", "The committed systemd service is documented as unused because of TTY/SIGHUP issues; the primary path is a .bash_profile launcher.", "Headphone HAT stacking and dual-output audio remain unresolved at platform level."]
+    match_keywords: [raspberry-pi-kiosk, appliance-boot, xinit-launcher, embedded-juce, remote-update]
+
+  - id: dronemakerclonev3.headphone-monitor.secondary-monitor-bus
+    project: DronemakerClonev3
+    subsystem: Headphone Monitor
+    name: Secondary headphone monitor bus
+    capability: Provides a planned independent headphone output path for cueing and pre-fader listening separate from the main UM2 output.
+    status: partial
+    approach: Relies on an InnoMaker DAC HAT with PCM5122 and TPA6133A2 plus a passive dual-gang volume pot and software routing from the Pi.
+    tech: [InnoMaker HiFi DAC HAT, PCM5122, TPA6133A2, I2S, ALSA, JUCE]
+    io: { in: "secondary audio stream from Raspberry Pi and volume pot attenuation", out: "panel-mount headphone stereo output" }
+    code_refs: ["ledger/subsystems/headphone-monitor.md", "ledger/PROJECT.md"]
+    known_gaps: ["Dual audio output in JUCE is still undecided and untested.", "PFL software controls are not yet implemented in the touchscreen UI.", "Physical clearance and final pot or resistor choices are still pending."]
+    match_keywords: [headphone-monitor, cue-bus, pfl, secondary-output, dac-hat]
+
+  - id: dronemakerclonev3.audio-interface-um2.um2-panelized-audio-io
+    project: DronemakerClonev3
+    subsystem: Audio Interface (UM2 Mod)
+    name: UM2 panelized audio I/O
+    capability: Rehouses a Behringer UM2 PCB as the instrument's main USB audio interface with panel-mounted jacks, switches, pots, and indicators.
+    status: partial
+    approach: Retains the original UM2 analog and USB circuitry, rewires removed board-mounted controls to panel parts, and exposes the board to the Pi as a class-compliant USB audio device.
+    tech: [Behringer UM2, USB Audio Class, soldered panel wiring]
+    io: { in: "mic or line input, instrument input, phantom switch, panel control movements", out: "USB audio I/O to Raspberry Pi and analog panel connections" }
+    code_refs: ["ledger/subsystems/audio-interface-um2.md", "docs/audio-interface/UM2_Teardown_v4.md", "ledger/PROJECT.md"]
+    known_gaps: ["Combo XLR/TRS jack choice is still unresolved.", "LED replacements are not yet wired and their electrical compatibility still needs checking.", "The removed headphone jack may need pad bridging depending on original normalling contacts."]
+    match_keywords: [usb-audio-interface-mod, panelized-audio-io, um2-mod, class-compliant-audio, analog-front-end]
+
+  - id: dronemakerclonev3.enclosure-and-faceplate.faceplate-cad-iteration
+    project: DronemakerClonev3
+    subsystem: Enclosure and Faceplate
+    name: Faceplate CAD iteration scripts
+    capability: Generates and analyses candidate faceplate STEP layouts and assembly visualisations for the enclosure.
+    status: partial
+    approach: Uses Python FreeCAD scripts to inspect imported STEP geometry, cut or rebuild panel features, and export assembly visualisations across multiple design revisions.
+    tech: [Python, FreeCAD, Part, Import, STEP]
+    io: { in: "original enclosure STEP files, measured dimensions, layout constants", out: "revised STEP faceplates, analysis output, and assembly visualisations" }
+    code_refs: ["hardware/enclosure/*.py", "hardware/enclosure/Faceplate*.step", "ledger/subsystems/enclosure-faceplate.md"]
+    known_gaps: ["The docs explicitly say the boolean-script approach produced artifacts across v1-v9 and is not manufacturing-ready.", "rebuild_faceplate.py leaves the screen cutout resize unfinished with a TODO.", "LED hole sizing and some mounting decisions remained tentative through parts of the iteration history."]
+    match_keywords: [freecad-script, parametric-faceplate, step-editing, enclosure-cad, panel-cutout-generation]
+
+  - id: dronemakerclonev3.enclosure-and-faceplate.manufacturing-brief-pack
+    project: DronemakerClonev3
+    subsystem: Enclosure and Faceplate
+    name: Enclosure manufacturing brief pack
+    capability: Captures the manufacturing-facing dimensions, layouts, and outsourced CAD handoff package for the enclosure panels.
+    status: partial
+    approach: Combines ledger specs with FreeCAD Draft-generated DXF reference layouts, datasheets, and written briefs to hand off the bent-panel machining work.
+    tech: [Markdown, FreeCAD Draft, importDXF, DXF, STEP]
+    io: { in: "measured panel dimensions, component cutout requirements, display analysis", out: "design brief markdown, DXF or FCStd layout guides, and outsourced CAD package" }
+    code_refs: ["hardware/enclosure/design-brief-assembly/DESIGN_BRIEF.md", "hardware/enclosure/design-brief-assembly/generate_layouts_dxf.py", "hardware/enclosure/design-brief-assembly/*.dxf", "hardware/enclosure/design-brief/*.md", "ledger/FACEPLATE_DIMENSIONS.md", "ledger/subsystems/enclosure-faceplate.md"]
+    known_gaps: ["The subsystem doc says professional CAD work is still needed for the final manufacturing-ready STEP or DXF.", "A CNC shop for the pre-bent panel still needs to be sourced.", "Internal PCB mounting and dry-fit verification are still pending."]
+    match_keywords: [manufacturing-brief, panel-layout, dxf-package, cad-handoff, enclosure-documentation]
