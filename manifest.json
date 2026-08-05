@@ -1,0 +1,31 @@
+{
+  "capture_finished_at_utc": "2026-08-05T00:07:33Z",
+  "capture_started_at_utc": "2026-08-05T00:07:25Z",
+  "captured_at_utc": "2026-08-05T00:07:25Z",
+  "captured_byte_estimate": 151357480,
+  "captured_path_count": 308,
+  "consistency_retry_count": 0,
+  "excluded": [
+    {
+      "path": "hardware/midi-controller/.history",
+      "reason": "unsupported_file_type",
+      "remote_recoverable": false,
+      "size": 160,
+      "threshold": null
+    }
+  ],
+  "github_hard_limit_bytes": 100000000,
+  "guardian_version": "2.0-sidecar",
+  "head_state": "symbolic",
+  "host": "aidans-laptop",
+  "racy_capture": false,
+  "repository_id": "DronemakerClonev3-a0ac71bea0a2",
+  "schema_version": 1,
+  "snapshot_blob_threshold_bytes": 94371840,
+  "snapshot_consistency": "stable",
+  "source_branch": "main",
+  "source_head_oid": "523a81c50299d8cb40bb2f9a6a028aa59830a4b0",
+  "source_index_sha256": "92e7b205e28567e2a5ba85501f1d6ac6bd9d8bcf179bf6f838c73a9f6e3391f8",
+  "source_path": "/Users/aidan/Dev/DronemakerClonev3",
+  "upstream_observed": "origin/main"
+}
