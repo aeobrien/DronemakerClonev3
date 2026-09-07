@@ -1,0 +1,213 @@
+======================================================================
+DRONEMAKER MIDI CONTROLLER — NETLIST VERIFICATION (v2)
+======================================================================
+
+NOTE: This document has been carefully prepared but not independently
+verified. Please cross-check pin functions and numbering against the
+component datasheets and flag anything that looks wrong.
+
+PIN REFERENCE CONVENTION: Teensy pins are referenced by GPIO number
+(T1.0, T1.24, etc.) except for power pins, which use physical pad
+positions (T1_BOT.pad0, T1_TOP.pad2, etc.). See the physical layout
+tables below to locate each GPIO pin on the socket headers.
+
+COMPONENTS
+----------------------------------------
+T1     Teensy 4.1 (in socket headers, 2x24 pin, 15.24mm row spacing)
+U1     74HC595 DIP-16 (GREEN - drives green LED cathodes)
+U2     74HC595 DIP-16 (RED - drives red LED cathodes)
+U3     74HC595 DIP-16 (BLUE - drives blue LED cathodes)
+R1-R8  220R (U1 Q0-Q7 to button green cathodes)
+R9-R16 220R (U2 Q0-Q7 to button red cathodes)
+R17-R24 220R (U3 Q0-Q7 to button blue cathodes)
+C1-C3  100nF ceramic (decoupling, one per IC)
+C4     47uF electrolytic (bulk, near Teensy, +5V to GND)
+C5     47uF electrolytic (bulk, near shift registers, +3V3 to GND)
+E1-E8  JST XH 4-pin (encoder connectors)
+B1-B8  JST XH 6-pin (button connectors)
+
+POWER NETS
+----------------------------------------
++3V3 (from Teensy 3.3V regulated output):
+  T1_BOT.pad14 (3.3V pin on bottom row)
+  T1_TOP.pad2 (3.3V pin on top row)
+  U1.16(VCC), U1.10(MR), C1.1
+  U2.16(VCC), U2.10(MR), C2.1
+  U3.16(VCC), U3.10(MR), C3.1
+  C5.1 (bulk)
+
++5V (from Teensy VIN / USB):
+  T1_TOP.pad0 (VIN pin on top row)
+  B1.3, B2.3, B3.3, B4.3, B5.3, B6.3, B7.3, B8.3  (LED anodes)
+  C4.1 (bulk)
+
+GND:
+  T1_BOT.pad0 (GND on bottom row, USB end)
+  T1_TOP.pad1 (GND on top row, near USB)
+  T1_TOP.pad14 (GND on top row, mid-board)
+  U1.8, U1.13(OE), C1.2
+  U2.8, U2.13(OE), C2.2
+  U3.8, U3.13(OE), C3.2
+  C4.2, C5.2 (bulk caps)
+  E1.4, E2.4, E3.4, E4.4, E5.4, E6.4, E7.4, E8.4  (encoder GND)
+  B1.2, B2.2, B3.2, B4.2, B5.2, B6.2, B7.2, B8.2  (button switch GND)
+
+TEENSY PIN ASSIGNMENTS — PHYSICAL LAYOUT
+========================================
+
+The Teensy 4.1 has a NON-OBVIOUS pin layout. Pins are interleaved
+across both rows, and the top row runs in reverse numerical order.
+The tables below show the actual physical pad positions.
+
+BOTTOM ROW (T1_BOT) — left to right from USB end
+----------------------------------------
+  Pad 0:  GND
+  Pad 1:  Pin 0  -> E1.1 (ENC1 channel A)
+  Pad 2:  Pin 1  -> E1.2 (ENC1 channel B)
+  Pad 3:  Pin 2  -> E2.1 (ENC2 channel A)
+  Pad 4:  Pin 3  -> E2.2 (ENC2 channel B)
+  Pad 5:  Pin 4  -> E3.1 (ENC3 channel A)
+  Pad 6:  Pin 5  -> E3.2 (ENC3 channel B)
+  Pad 7:  Pin 6  -> E4.1 (ENC4 channel A)
+  Pad 8:  Pin 7  -> E4.2 (ENC4 channel B)
+  Pad 9:  Pin 8  -> E5.1 (ENC5 channel A)
+  Pad 10: Pin 9  -> E5.2 (ENC5 channel B)
+  Pad 11: Pin 10 -> E6.1 (ENC6 channel A)
+  Pad 12: Pin 11 -> E6.2 (ENC6 channel B)
+  Pad 13: Pin 12 -> E7.1 (ENC7 channel A)
+  Pad 14: 3.3V   -> +3V3 rail
+  Pad 15: Pin 24 -> B1.1 (BTN1 switch)
+  Pad 16: Pin 25 -> B2.1 (BTN2 switch)
+  Pad 17: Pin 26 -> B3.1 (BTN3 switch)
+  Pad 18: Pin 27 -> B4.1 (BTN4 switch)
+  Pad 19: Pin 28 -> B5.1 (BTN5 switch)
+  Pad 20: Pin 29 -> B6.1 (BTN6 switch)
+  Pad 21: Pin 30 -> B7.1 (BTN7 switch)
+  Pad 22: Pin 31 -> B8.1 (BTN8 switch)
+  Pad 23: Pin 32 -> U1.14 (DATA / SER)
+
+TOP ROW (T1_TOP) — left to right from USB end
+NOTE: GPIO pins run in REVERSE numerical order
+----------------------------------------
+  Pad 0:  VIN    -> +5V rail
+  Pad 1:  GND
+  Pad 2:  3.3V   -> +3V3 rail
+  Pad 3:  Pin 23 -> E8.3 (ENC8 push switch)
+  Pad 4:  Pin 22 -> E7.3 (ENC7 push switch)
+  Pad 5:  Pin 21 -> E6.3 (ENC6 push switch)
+  Pad 6:  Pin 20 -> E5.3 (ENC5 push switch)
+  Pad 7:  Pin 19 -> E4.3 (ENC4 push switch)
+  Pad 8:  Pin 18 -> E3.3 (ENC3 push switch)
+  Pad 9:  Pin 17 -> E2.3 (ENC2 push switch)
+  Pad 10: Pin 16 -> E1.3 (ENC1 push switch)
+  Pad 11: Pin 15 -> E8.2 (ENC8 channel B)
+  Pad 12: Pin 14 -> E8.1 (ENC8 channel A)
+  Pad 13: Pin 13 -> E7.2 (ENC7 channel B)
+  Pad 14: GND
+  Pad 15: Pin 41 -> unconnected (spare)
+  Pad 16: Pin 40 -> unconnected (spare)
+  Pad 17: Pin 39 -> unconnected (spare)
+  Pad 18: Pin 38 -> unconnected (spare)
+  Pad 19: Pin 37 -> unconnected (spare)
+  Pad 20: Pin 36 -> unconnected (spare)
+  Pad 21: Pin 35 -> unconnected (spare)
+  Pad 22: Pin 34 -> U1.12, U2.12, U3.12 (LATCH / RCLK)
+  Pad 23: Pin 33 -> U1.11, U2.11, U3.11 (CLOCK / SRCLK)
+
+SHIFT REGISTER FIXED CONNECTIONS (identical on all 3 ICs)
+----------------------------------------
+  Pin 16 (VCC)   -> +3V3  (NOT +5V)
+  Pin 10 (MR)    -> +3V3  (active high = never reset)
+  Pin  8 (GND)   -> GND
+  Pin 13 (OE)    -> GND   (active low = outputs always enabled)
+  Pin 11 (SRCLK) -> CLOCK (shared, from Teensy pin 33)
+  Pin 12 (RCLK)  -> LATCH (shared, from Teensy pin 34)
+
+DAISY CHAIN
+----------------------------------------
+  U1.14(SER)  <- DATA (from Teensy pin 32)
+  U1.9(Q7')   -> U2.14(SER)
+  U2.9(Q7')   -> U3.14(SER)
+  U3.9(Q7')   = unconnected (end of chain)
+
+  Byte order in firmware: shiftOut blue FIRST (->U3),
+  then red (->U2), then green LAST (->U1).
+
+LED CATHODE CONNECTIONS (via 220R resistors)
+----------------------------------------
+
+U1 (GREEN) -> 220R -> Button header pin 5 (green cathode):
+  U1.15(Q0) -> R1 -> B1.5
+  U1.1(Q1)  -> R2 -> B2.5
+  U1.2(Q2)  -> R3 -> B3.5
+  U1.3(Q3)  -> R4 -> B4.5
+  U1.4(Q4)  -> R5 -> B5.5
+  U1.5(Q5)  -> R6 -> B6.5
+  U1.6(Q6)  -> R7 -> B7.5
+  U1.7(Q7)  -> R8 -> B8.5
+
+U2 (RED) -> 220R -> Button header pin 4 (red cathode):
+  U2.15(Q0) -> R9  -> B1.4
+  U2.1(Q1)  -> R10 -> B2.4
+  U2.2(Q2)  -> R11 -> B3.4
+  U2.3(Q3)  -> R12 -> B4.4
+  U2.4(Q4)  -> R13 -> B5.4
+  U2.5(Q5)  -> R14 -> B6.4
+  U2.6(Q6)  -> R15 -> B7.4
+  U2.7(Q7)  -> R16 -> B8.4
+
+U3 (BLUE) -> 220R -> Button header pin 6 (blue cathode):
+  U3.15(Q0) -> R17 -> B1.6
+  U3.1(Q1)  -> R18 -> B2.6
+  U3.2(Q2)  -> R19 -> B3.6
+  U3.3(Q3)  -> R20 -> B4.6
+  U3.4(Q4)  -> R21 -> B5.6
+  U3.5(Q5)  -> R22 -> B6.6
+  U3.6(Q6)  -> R23 -> B7.6
+  U3.7(Q7)  -> R24 -> B8.6
+
+ENCODER HEADERS (JST XH 4-pin)
+----------------------------------------
+Note: Pin numbers below (T1.0, T1.13, etc.) refer to Teensy GPIO pin
+numbers, not physical pad positions on the socket headers. See the
+physical layout tables above to locate each pin on T1_BOT or T1_TOP.
+  E1: pin1=chA->T1.0, pin2=chB->T1.1, pin3=SW->T1.16, pin4=GND
+  E2: pin1=chA->T1.2, pin2=chB->T1.3, pin3=SW->T1.17, pin4=GND
+  E3: pin1=chA->T1.4, pin2=chB->T1.5, pin3=SW->T1.18, pin4=GND
+  E4: pin1=chA->T1.6, pin2=chB->T1.7, pin3=SW->T1.19, pin4=GND
+  E5: pin1=chA->T1.8, pin2=chB->T1.9, pin3=SW->T1.20, pin4=GND
+  E6: pin1=chA->T1.10, pin2=chB->T1.11, pin3=SW->T1.21, pin4=GND
+  E7: pin1=chA->T1.12, pin2=chB->T1.13, pin3=SW->T1.22, pin4=GND
+  E8: pin1=chA->T1.14, pin2=chB->T1.15, pin3=SW->T1.23, pin4=GND
+
+BUTTON HEADERS (JST XH 6-pin)
+----------------------------------------
+  B1: pin1=SW->T1.24, pin2=GND, pin3=+5V, pin4=red, pin5=grn, pin6=blu
+  B2: pin1=SW->T1.25, pin2=GND, pin3=+5V, pin4=red, pin5=grn, pin6=blu
+  B3: pin1=SW->T1.26, pin2=GND, pin3=+5V, pin4=red, pin5=grn, pin6=blu
+  B4: pin1=SW->T1.27, pin2=GND, pin3=+5V, pin4=red, pin5=grn, pin6=blu
+  B5: pin1=SW->T1.28, pin2=GND, pin3=+5V, pin4=red, pin5=grn, pin6=blu
+  B6: pin1=SW->T1.29, pin2=GND, pin3=+5V, pin4=red, pin5=grn, pin6=blu
+  B7: pin1=SW->T1.30, pin2=GND, pin3=+5V, pin4=red, pin5=grn, pin6=blu
+  B8: pin1=SW->T1.31, pin2=GND, pin3=+5V, pin4=red, pin5=grn, pin6=blu
+
+DECOUPLING
+----------------------------------------
+  C1: 100nF between U1.16(+3V3) and U1.8(GND)
+  C2: 100nF between U2.16(+3V3) and U2.8(GND)
+  C3: 100nF between U3.16(+3V3) and U3.8(GND)
+  C4: 47uF between +5V and GND (near Teensy)
+  C5: 47uF between +3V3 and GND (near shift registers)
+
+UNUSED / UNCONNECTED
+----------------------------------------
+  T1 pins 35-41 (spare, on T1_TOP pads 15-21)
+  U3.9 (Q7' - end of daisy chain)
+
+ACTIVE-LOW LED LOGIC: shift register output LOW = LED ON,
+output HIGH = LED OFF (common-anode buttons, anodes on +5V,
+cathodes sunk through shift register outputs via resistors).
+
+ALL ACTIVE TEENSY PINS USE INPUT_PULLUP (encoder channels,
+encoder push switches, button switches). No external pull-up
+resistors required - firmware dependency only.
