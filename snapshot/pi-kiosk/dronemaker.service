@@ -1,0 +1,21 @@
+[Unit]
+Description=DronemakerClone Kiosk
+After=multi-user.target sound.target
+Wants=sound.target
+
+[Service]
+Type=simple
+User=pi
+Environment=HOME=/home/pi
+TTYPath=/dev/tty1
+StandardInput=tty
+TTYReset=yes
+TTYVHangup=yes
+ExecStart=/home/pi/DronemakerClonev3/pi-kiosk/kiosk-start.sh
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
