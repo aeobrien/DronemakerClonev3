@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<JUCERPROJECT id="VLyMBB" name="DronemakerClonev3" projectType="guiapp" useAppConfig="0"
+              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1">
+  <MAINGROUP id="mXtqQg" name="DronemakerClonev3">
+    <GROUP id="{B59CB0A7-1D5C-C007-962C-92F4AB48B579}" name="Source">
+      <FILE id="GODWnw" name="Main.cpp" compile="1" resource="0" file="Source/Main.cpp"/>
+      <FILE id="O8Vtrt" name="MainComponent.h" compile="0" resource="0" file="Source/MainComponent.h"/>
+      <FILE id="djprka" name="MainComponent.cpp" compile="1" resource="0"
+            file="Source/MainComponent.cpp"/>
+      <FILE id="fftprH" name="FFTProcessor.h" compile="0" resource="0" file="Source/FFTProcessor.h"/>
+      <FILE id="fftprC" name="FFTProcessor.cpp" compile="1" resource="0"
+            file="Source/FFTProcessor.cpp"/>
+      <FILE id="looprcH" name="LoopRecorder.h" compile="0" resource="0" file="Source/LoopRecorder.h"/>
+      <FILE id="looprcC" name="LoopRecorder.cpp" compile="1" resource="0"
+            file="Source/LoopRecorder.cpp"/>
+      <FILE id="loopautoH" name="LoopAutomation.h" compile="0" resource="0" file="Source/LoopAutomation.h"/>
+      <FILE id="loopseqexH" name="LoopSequenceExecutor.h" compile="0" resource="0" file="Source/LoopSequenceExecutor.h"/>
+      <FILE id="loopseqexC" name="LoopSequenceExecutor.cpp" compile="1" resource="0"
+            file="Source/LoopSequenceExecutor.cpp"/>
+      <FILE id="loopautoeditH" name="LoopAutomationEditor.h" compile="0" resource="0" file="Source/LoopAutomationEditor.h"/>
+      <FILE id="loopautoeditC" name="LoopAutomationEditor.cpp" compile="1" resource="0"
+            file="Source/LoopAutomationEditor.cpp"/>
+      <FILE id="piLayoutH" name="PiLayout.h" compile="0" resource="0" file="Source/PiLayout.h"/>
+      <FILE id="piLayoutC" name="PiLayout.cpp" compile="1" resource="0" file="Source/PiLayout.cpp"/>
+      <FILE id="vEncBankH" name="VirtualEncoderBank.h" compile="0" resource="0" file="Source/VirtualEncoderBank.h"/>
+      <GROUP id="{EF5CD0A7-2D6C-D107-A62D-92F5AC48C689}" name="Effects">
+        <FILE id="efxBase" name="EffectBase.h" compile="0" resource="0" file="Source/Effects/EffectBase.h"/>
+        <FILE id="efxChainH" name="EffectsChain.h" compile="0" resource="0" file="Source/Effects/EffectsChain.h"/>
+        <FILE id="efxChainC" name="EffectsChain.cpp" compile="1" resource="0" file="Source/Effects/EffectsChain.cpp"/>
+        <FILE id="efxFilterH" name="FilterEffect.h" compile="0" resource="0" file="Source/Effects/FilterEffect.h"/>
+        <FILE id="efxFilterC" name="FilterEffect.cpp" compile="1" resource="0" file="Source/Effects/FilterEffect.cpp"/>
+        <FILE id="efxDelayH" name="DelayEffect.h" compile="0" resource="0" file="Source/Effects/DelayEffect.h"/>
+        <FILE id="efxDelayC" name="DelayEffect.cpp" compile="1" resource="0" file="Source/Effects/DelayEffect.cpp"/>
+        <FILE id="efxGranH" name="GranularEffect.h" compile="0" resource="0" file="Source/Effects/GranularEffect.h"/>
+        <FILE id="efxGranC" name="GranularEffect.cpp" compile="1" resource="0" file="Source/Effects/GranularEffect.cpp"/>
+        <FILE id="efxTremH" name="TremoloEffect.h" compile="0" resource="0" file="Source/Effects/TremoloEffect.h"/>
+        <FILE id="efxTremC" name="TremoloEffect.cpp" compile="1" resource="0" file="Source/Effects/TremoloEffect.cpp"/>
+        <FILE id="efxDistH" name="DistortionEffect.h" compile="0" resource="0" file="Source/Effects/DistortionEffect.h"/>
+        <FILE id="efxDistC" name="DistortionEffect.cpp" compile="1" resource="0" file="Source/Effects/DistortionEffect.cpp"/>
+        <FILE id="efxTapeH" name="TapeEffect.h" compile="0" resource="0" file="Source/Effects/TapeEffect.h"/>
+        <FILE id="efxTapeC" name="TapeEffect.cpp" compile="1" resource="0" file="Source/Effects/TapeEffect.cpp"/>
+      </GROUP>
+      <GROUP id="{MF6DE1B8-3E7D-E208-B73E-A3G6BD59D790}" name="Modulation">
+        <FILE id="modSrcH" name="ModulationSource.h" compile="0" resource="0" file="Source/Modulation/ModulationSource.h"/>
+        <FILE id="modMgrH" name="ModulationManager.h" compile="0" resource="0" file="Source/Modulation/ModulationManager.h"/>
+        <FILE id="modMgrC" name="ModulationManager.cpp" compile="1" resource="0" file="Source/Modulation/ModulationManager.cpp"/>
+        <FILE id="modPanelH" name="ModulationPanel.h" compile="0" resource="0" file="Source/Modulation/ModulationPanel.h"/>
+      </GROUP>
+    </GROUP>
+  </MAINGROUP>
+  <MODULES>
+    <MODULE id="juce_audio_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_devices" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_formats" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_processors" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_processors_headless" showAllCode="1" useLocalCopy="0"
+            useGlobalPath="1"/>
+    <MODULE id="juce_audio_utils" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_core" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_data_structures" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_dsp" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_events" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_graphics" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_gui_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_gui_extra" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+  </MODULES>
+  <JUCEOPTIONS JUCE_STRICT_REFCOUNTEDPOINTER="1"/>
+  <EXPORTFORMATS>
+    <XCODE_MAC targetFolder="Builds/MacOSX" microphonePermissionNeeded="1">
+      <CONFIGURATIONS>
+        <CONFIGURATION isDebug="1" name="Debug" targetName="DronemakerClonev3"/>
+        <CONFIGURATION isDebug="0" name="Release" targetName="DronemakerClonev3"/>
+      </CONFIGURATIONS>
+      <MODULEPATHS>
+        <MODULEPATH id="juce_audio_basics" path="../../JUCE/modules"/>
+        <MODULEPATH id="juce_audio_devices" path="../../JUCE/modules"/>
+        <MODULEPATH id="juce_audio_formats" path="../../JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors" path="../../JUCE/modules"/>
+        <MODULEPATH id="juce_audio_utils" path="../../JUCE/modules"/>
+        <MODULEPATH id="juce_core" path="../../JUCE/modules"/>
+        <MODULEPATH id="juce_data_structures" path="../../JUCE/modules"/>
+        <MODULEPATH id="juce_dsp" path="../../JUCE/modules"/>
+        <MODULEPATH id="juce_events" path="../../JUCE/modules"/>
+        <MODULEPATH id="juce_graphics" path="../../JUCE/modules"/>
+        <MODULEPATH id="juce_gui_basics" path="../../JUCE/modules"/>
+        <MODULEPATH id="juce_gui_extra" path="../../JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors_headless" path="../../JUCE/modules"/>
+      </MODULEPATHS>
+    </XCODE_MAC>
+  </EXPORTFORMATS>
+</JUCERPROJECT>
